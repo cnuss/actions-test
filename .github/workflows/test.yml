@@ -12,6 +12,6 @@ jobs:
     steps:
       - run: |
           curl
-          -H "Accept: application/vnd.github+json" \
+          -H "Accept: application/vnd.github+json"
           -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}"
           https://api.github.com/repos/cnuss/actions-test/collaborators
