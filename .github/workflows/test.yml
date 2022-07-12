@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          curl \
-          -H "Accept: application/vnd.github+json" \ 
-          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          curl
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}"
           https://api.github.com/repos/cnuss/actions-test/collaborators
