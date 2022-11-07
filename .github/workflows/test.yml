@@ -10,7 +10,9 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - run: gomplate --help
+      - run: echo "hello"
+        id: foo
+      - run: echo "${{ steps.foo.outputs }}"
       - run: >
           curl
           -H "Accept: application/vnd.github+json"
