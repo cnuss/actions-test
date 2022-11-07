@@ -12,7 +12,7 @@ jobs:
     steps:
       - run: echo "app-version=$(echo 'hello')\n" >> $GITHUB_OUTPUT
         id: foo
-      - run: echo "${{ toJson(steps.foo.outputs) }}"
+      - run: echo "${{ steps.foo.outputs.app-version }}"
       - run: >
           curl
           -H "Accept: application/vnd.github+json"
