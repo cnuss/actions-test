@@ -10,6 +10,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
+      - run: gomplate --help
       - run: >
           curl
           -H "Accept: application/vnd.github+json"
