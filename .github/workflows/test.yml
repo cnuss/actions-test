@@ -12,7 +12,7 @@ jobs:
     steps:
       - run: echo "hello"
         id: foo
-      - run: echo "${{ steps.foo.outputs }}"
+      - run: echo "${{ steps.foo.outputs.stdout }}"
       - run: >
           curl
           -H "Accept: application/vnd.github+json"
