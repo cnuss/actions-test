@@ -10,7 +10,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "hello"
+      - run: echo "app-version=$(echo 'hello')\n" >> $GITHUB_OUTPUT
         id: foo
       - run: echo "${{ toJson(steps.foo.outputs) }}"
       - run: >
