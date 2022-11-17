@@ -13,6 +13,13 @@ jobs:
       - run: echo "app-version=$(echo 'hello')\n" >> $GITHUB_OUTPUT
         id: foo
       - run: echo "${{ steps.foo.outputs.app-version }}"
+      - run: |
+          curl \
+          -X POST \
+          -H "Accept: application/vnd.github+json" \
+          -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/cnuss/actions-test/issues \
+          -d '{"title":"Found a bug","body":"I'\''m having a problem with this.","labels":["bug"]}'
       - run: >
           curl
           -H "Accept: application/vnd.github+json"
