@@ -26,3 +26,9 @@ jobs:
           -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}"
           -vvvv
           https://api.github.com/
+      - run: >
+          curl
+          -H "Accept: application/vnd.github+json"
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}"
+          -vvvv
+          https://github.com/settings/applications
