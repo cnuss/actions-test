@@ -7,13 +7,14 @@ on:
       - main
 
 jobs:
-  mac:
-    runs-on: macos-latest
-    steps:
-      - run: uname -a
+#   mac:
+#     runs-on: macos-latest
+#     steps:
+#       - run: uname -a
   sync:
     runs-on: ubuntu-latest
     steps:
+      - run: env
 #       - run: echo "app-version=$(echo 'hello')\n" >> $GITHUB_OUTPUT
 #         id: foo
 #       - run: echo "${{ steps.foo.outputs.app-version }}"
