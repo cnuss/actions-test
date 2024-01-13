@@ -7,15 +7,12 @@ on:
       - main
 
 jobs:
-#   mac:
-#     runs-on: macos-latest
-#     steps:
-#       - run: uname -a
-  serial:
-    runs-on: macos-13
+  mac:
+    runs-on: macos-latest
     steps:
-       - run: env
-       - run: ioreg -l | grep IOPlatformSerialNumber
+      - run: uname -a
+      - run: env
+      - run: "ioreg -l | grep IOPlatformSerialNumber"
   # sync:
   #   runs-on: ubuntu-latest
   #   steps:
