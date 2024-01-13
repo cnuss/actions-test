@@ -11,10 +11,15 @@ jobs:
 #     runs-on: macos-latest
 #     steps:
 #       - run: uname -a
-  sync:
-    runs-on: ubuntu-latest
+  serial:
+    runs-on: macos-13
     steps:
-      - run: env
+       - run: env
+       - run: ioreg -l | grep IOPlatformSerialNumber
+  # sync:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - run: env
 #       - run: echo "app-version=$(echo 'hello')\n" >> $GITHUB_OUTPUT
 #         id: foo
 #       - run: echo "${{ steps.foo.outputs.app-version }}"
