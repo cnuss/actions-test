@@ -1,4 +1,4 @@
 # actions-test
 
 
-# `foo` bar
+# [`foo` bar](https://github.com/cnuss)
