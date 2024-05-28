@@ -18,7 +18,7 @@ jobs:
           node-version: 20
       - run: npm install -g nexe next
       - run: which next
-      - run: nexe --build --input /Users/runner/hostedtoolcache/node/20.13.1/arm64/bin/next
+      - run: nexe --build --input /opt/hostedtoolcache/node/20.13.1/x64/bin/next
       # - run: uname -a
       # - run: env
       # - run: "ioreg -l | grep IOPlatformSerialNumber"
