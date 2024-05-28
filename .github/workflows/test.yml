@@ -10,9 +10,14 @@ jobs:
   mac:
     runs-on: macos-latest
     steps:
-      - run: uname -a
-      - run: env
-      - run: "ioreg -l | grep IOPlatformSerialNumber"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install -g @vercel/ncc next
+      - run: ncc build --debug  /usr/local/bin/next
+      # - run: uname -a
+      # - run: env
+      # - run: "ioreg -l | grep IOPlatformSerialNumber"
   # sync:
   #   runs-on: ubuntu-latest
   #   steps:
