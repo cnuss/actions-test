@@ -15,7 +15,7 @@ jobs:
           node-version: 20
       - run: npm install -g @vercel/ncc next
       - run: which next
-      - run: ncc build --debug  /usr/local/bin/next
+      - run: ncc build --debug  /Users/runner/hostedtoolcache/node/20.13.1/arm64/bin/next
       # - run: uname -a
       # - run: env
       # - run: "ioreg -l | grep IOPlatformSerialNumber"
