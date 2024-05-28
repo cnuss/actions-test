@@ -7,8 +7,8 @@ on:
       - main
 
 jobs:
-  mac:
-    runs-on: macos-latest
+  dostuff:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-python@v5
         with:
