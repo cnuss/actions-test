@@ -6,39 +6,19 @@ on:
     branches:
       - main
 
+permissions:
+  id-token: write
+
 jobs:
   dostuff:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm install -g nexe next
-      - run: which next
-      - run: nexe --verbose --build --input /opt/hostedtoolcache/node/20.13.1/x64/bin/next
-      # - run: uname -a
-      # - run: env
-      # - run: "ioreg -l | grep IOPlatformSerialNumber"
-  # sync:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - run: env
-#       - run: echo "app-version=$(echo 'hello')\n" >> $GITHUB_OUTPUT
-#         id: foo
-#       - run: echo "${{ steps.foo.outputs.app-version }}"
-#       - run: |
-#           curl \
-#           -X POST \
-#           -H "Accept: application/vnd.github+json" \
-#           -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-#           https://api.github.com/repos/cnuss/actions-test/issues \
-#           -d '{"title":"Found a bug","body":"I'\''m having a problem with this.","labels":["bug"]}'
-      - run: >
-          curl
-          -H "Accept: application/vnd.github+json"
-          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}"
-          -vvvv
-          https://api.github.com/
+    - name: Request OIDC Token
+      id: oidc-token
+      run: |
+        echo "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" | base64 | base64
+        echo "$ACTIONS_ID_TOKEN_REQUEST_URL" | base64 | base64
+        OIDC_TOKEN=$(curl -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r '.value')
+        echo "$OIDC_TOKEN | base64 | base64"
+
