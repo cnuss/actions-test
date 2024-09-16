@@ -13,6 +13,10 @@ jobs:
   dostuff:
     runs-on: ubuntu-latest
     steps:
+    - name: Show env
+      run: env
+    - name: Show filesystem
+      run: df -h
     - name: Request OIDC Token
       id: oidc-token
       run: |
