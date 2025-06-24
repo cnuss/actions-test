@@ -13,24 +13,26 @@ jobs:
   dostuff:
     runs-on: ubuntu-latest
     steps:
-    - name: Filesystem
-      run: df -h
-    - name: Mounts
-      run: mount
-    - name: Disk usage
-      run: du -h
-    - name: Show /mnt
-      run: ls -alR /mnt
-    - name: Show env
-      run: env
-    - name: Show filesystem
-      run: df -h
-    - name: Request OIDC Token
-      id: oidc-token
-      run: |
-        echo "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" | base64 | base64
-        echo "$ACTIONS_ID_TOKEN_REQUEST_URL" | base64 | base64
-        OIDC_TOKEN=$(curl -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-          "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r '.value')
-        echo "$OIDC_TOKEN | base64 | base64"
+      - name: Output env
+        run: env
+    # - name: Filesystem
+    #   run: df -h
+    # - name: Mounts
+    #   run: mount
+    # - name: Disk usage
+    #   run: du -h
+    # - name: Show /mnt
+    #   run: ls -alR /mnt
+    # - name: Show env
+    #   run: env
+    # - name: Show filesystem
+    #   run: df -h
+    # - name: Request OIDC Token
+    #   id: oidc-token
+    #   run: |
+    #     echo "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" | base64 | base64
+    #     echo "$ACTIONS_ID_TOKEN_REQUEST_URL" | base64 | base64
+    #     OIDC_TOKEN=$(curl -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+    #       "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r '.value')
+    #     echo "$OIDC_TOKEN | base64 | base64"
 
