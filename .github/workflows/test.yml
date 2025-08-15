@@ -15,10 +15,10 @@ jobs:
     steps:
       - name: Output env
         run: env
-    # - name: Filesystem
-    #   run: df -h
-    # - name: Mounts
-    #   run: mount
+      - name: Filesystem
+        run: df -h
+      - name: Mounts
+        run: mount
     # - name: Disk usage
     #   run: du -h
     # - name: Show /mnt
