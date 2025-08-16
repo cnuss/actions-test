@@ -19,6 +19,8 @@ jobs:
         run: df -h
       - name: Mounts
         run: mount
+      - name: cgroups
+        run: ls -al /sys/fs/cgroup
     # - name: Disk usage
     #   run: du -h
     # - name: Show /mnt
