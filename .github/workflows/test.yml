@@ -25,7 +25,7 @@ jobs:
       - name: Mounts
         run: mount
       - name: cgroups
-        run: ls -al /sys/fs/cgroup
+        run: docker run --privileged=true -v /sys/fs/cgroup:/sys/fs/cgroup:rw ubuntu:latest ls -al /sys/fs/cgroup || true
     # - name: Disk usage
     #   run: du -h
     # - name: Show /mnt
