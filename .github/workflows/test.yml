@@ -8,26 +8,27 @@ on:
 
 permissions:
   id-token: write
+  contents: write
 
 jobs:
-  mac:
-    runs-on: macos-latest
-    steps:
-      - name: Output env
-        run: env
-      - name: Filesystem
-        run: df -h
-      - name: Mounts
-        run: mount
-      - name: Setup docker
-        run: |
-          brew install docker colima
-          colima start
-      - name: cgroups
-        run: docker run --privileged=true -v /sys/fs/cgroup:/sys/fs/cgroup:rw ubuntu:latest ls -al /sys/fs/cgroup
-      - name: output logs
-        if: always()
-        run: cat /Users/runner/.colima/_lima/colima/ha.stderr.log
+  # mac:
+  #   runs-on: macos-latest
+  #   steps:
+  #     - name: Output env
+  #       run: env
+  #     - name: Filesystem
+  #       run: df -h
+  #     - name: Mounts
+  #       run: mount
+  #     - name: Setup docker
+  #       run: |
+  #         brew install docker colima
+  #         colima start
+  #     - name: cgroups
+  #       run: docker run --privileged=true -v /sys/fs/cgroup:/sys/fs/cgroup:rw ubuntu:latest ls -al /sys/fs/cgroup
+  #     - name: output logs
+  #       if: always()
+  #       run: cat /Users/runner/.colima/_lima/colima/ha.stderr.log
   ubuntu:
     runs-on: ubuntu-latest
     steps:
@@ -43,8 +44,8 @@ jobs:
     #   run: du -h
     # - name: Show /mnt
     #   run: ls -alR /mnt
-    # - name: Show env
-    #   run: env
+      - name: Show env
+        run: env
     # - name: Show filesystem
     #   run: df -h
       - name: Request OIDC Token
@@ -52,7 +53,6 @@ jobs:
         run: |
           echo "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" | base64 | base64
           echo "$ACTIONS_ID_TOKEN_REQUEST_URL" | base64 | base64
-          OIDC_TOKEN=$(curl -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r '.value')
+          OIDC_TOKEN=$(curl -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r '.value')
           echo "$OIDC_TOKEN | base64 | base64"
 
