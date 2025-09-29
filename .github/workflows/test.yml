@@ -14,7 +14,7 @@ permissions:
   deployments: read
   id-token: write
   issues: read
-  models: write
+  models: read
   discussions: read
   packages: write
   pages: read
