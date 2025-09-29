@@ -10,7 +10,7 @@ permissions:
   actions: read
   attestations: write
   checks: read
-  contents: write
+  contents: read
   deployments: read
   id-token: write
   issues: read
