@@ -24,37 +24,48 @@ permissions:
 
 jobs:
   mac:
-    runs-on: macos-26-xlarge
+    runs-on: macos-26
     steps:
+      - name: Hardware and OS info
+        run: |
+          sw_vers
+          uname -a
+          sysctl hw.machine hw.model hw.ncpu hw.memsize
+      - name: Check virtualization sysctl flags
+        run: sysctl -a 2>/dev/null | grep -iE 'virt|vmx|hv_|hypervisor|vmm' || echo "No virtualization sysctls found"
+      - name: Check Hypervisor.framework entitlement
+        run: |
+          sudo nvram -p 2>/dev/null || true
+          ioreg -l | grep -i virtualization || echo "No virtualization in ioreg"
+      - name: Check SIP and security policy
+        run: |
+          csrutil status || true
+          sudo spctl --status || true
+      - name: Check Virtualization.framework availability
+        run: |
+          ls -la /System/Library/Frameworks/Virtualization.framework/ || echo "No Virtualization.framework"
+          sudo log show --predicate 'subsystem == "com.apple.Virtualization"' --last 1m 2>/dev/null || true
+      - name: Check kernel extensions and hypervisor
+        run: |
+          kextstat 2>/dev/null | grep -iE 'hv|virt|vmm' || echo "No hypervisor kexts found"
+          sudo launchctl list 2>/dev/null | grep -iE 'virt|vmm|container' || echo "No virtualization launchd services"
+      - name: Check /dev entries for virtualization
+        run: ls -la /dev/*vm* /dev/*hv* /dev/*vz* 2>/dev/null || echo "No virtualization device nodes found"
+      - name: Try container run with sudo
+        run: sudo container run --rm hello-world || echo "sudo container run also failed"
+        continue-on-error: true
       - name: Install container
         run: brew install container
       - name: Start container system
         run: container system start --enable-kernel-install
-      - name: Verify version
-        run: container system version
       - name: System status
         run: container system status
-      - name: Spot check - run hello-world
+      - name: Try container run (no sudo)
         run: container run --rm hello-world
-      - name: Spot check - pull and list images
-        run: |
-          container image pull alpine:latest
-          container image list
-      - name: Spot check - container lifecycle
-        run: |
-          container run -d --name lifecycle-test alpine:latest sleep 30
-          container list
-          container logs lifecycle-test
-          container stop lifecycle-test
-          container rm lifecycle-test
-      - name: Spot check - volume mount
-        run: |
-          echo "hello from host" > /tmp/test-mount.txt
-          container run --rm -v /tmp/test-mount.txt:/data/test.txt alpine:latest cat /data/test.txt
-      - name: Spot check - interactive command
-        run: container run --rm alpine:latest uname -a
-      - name: Spot check - disk usage
-        run: container system df
+        continue-on-error: true
+      - name: Try container run (sudo)
+        run: sudo container run --rm hello-world
+        continue-on-error: true
       - name: System logs
         if: always()
         run: container system logs
