@@ -24,7 +24,7 @@ permissions:
 
 jobs:
   mac:
-    runs-on: macos-26
+    runs-on: macos-26-xlarge
     steps:
       - name: Install container
         run: brew install container
