@@ -24,51 +24,53 @@ permissions:
 
 jobs:
   mac:
-    runs-on: macos-26
+    runs-on: macos-latest
     steps:
-      - name: Hardware and OS info
+      - name: Install Docker Desktop
         run: |
-          sw_vers
-          uname -a
-          sysctl hw.machine hw.model hw.ncpu hw.memsize
-      - name: Check virtualization sysctl flags
-        run: sysctl -a 2>/dev/null | grep -iE 'virt|vmx|hv_|hypervisor|vmm' || echo "No virtualization sysctls found"
-      - name: Check Hypervisor.framework entitlement
+          brew install --cask docker
+          echo "Docker Desktop installed"
+      - name: Start Docker Desktop
         run: |
-          sudo nvram -p 2>/dev/null || true
-          ioreg -l | grep -i virtualization || echo "No virtualization in ioreg"
-      - name: Check SIP and security policy
-        run: |
-          csrutil status || true
-          sudo spctl --status || true
-      - name: Check Virtualization.framework availability
-        run: |
-          ls -la /System/Library/Frameworks/Virtualization.framework/ || echo "No Virtualization.framework"
-          sudo log show --predicate 'subsystem == "com.apple.Virtualization"' --last 1m 2>/dev/null || true
-      - name: Check kernel extensions and hypervisor
-        run: |
-          kextstat 2>/dev/null | grep -iE 'hv|virt|vmm' || echo "No hypervisor kexts found"
-          sudo launchctl list 2>/dev/null | grep -iE 'virt|vmm|container' || echo "No virtualization launchd services"
-      - name: Check /dev entries for virtualization
-        run: ls -la /dev/*vm* /dev/*hv* /dev/*vz* 2>/dev/null || echo "No virtualization device nodes found"
-      - name: Try container run with sudo
-        run: sudo container run --rm hello-world || echo "sudo container run also failed"
+          open -a Docker
+          echo "Waiting for Docker to start..."
+          for i in $(seq 1 60); do
+            if docker info >/dev/null 2>&1; then
+              echo "Docker is ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          docker info || echo "Docker failed to start within 60s"
+      - name: Spot check - docker version
+        run: docker version
         continue-on-error: true
-      - name: Install container
-        run: brew install container
-      - name: Start container system
-        run: container system start --enable-kernel-install
-      - name: System status
-        run: container system status
-      - name: Try container run (no sudo)
-        run: container run --rm hello-world
+      - name: Spot check - run hello-world
+        run: docker run --rm hello-world
         continue-on-error: true
-      - name: Try container run (sudo)
-        run: sudo container run --rm hello-world
+      - name: Spot check - pull and list images
+        run: |
+          docker pull alpine:latest
+          docker image ls
         continue-on-error: true
-      - name: System logs
+      - name: Spot check - container lifecycle
+        run: |
+          docker run -d --name lifecycle-test alpine:latest sleep 30
+          docker ps
+          docker logs lifecycle-test
+          docker stop lifecycle-test
+          docker rm lifecycle-test
+        continue-on-error: true
+      - name: Spot check - volume mount
+        run: |
+          echo "hello from host" > /tmp/test-mount.txt
+          docker run --rm -v /tmp/test-mount.txt:/data/test.txt:ro alpine:latest cat /data/test.txt
+        continue-on-error: true
+      - name: Docker logs
         if: always()
-        run: container system logs
+        run: |
+          ls -la ~/Library/Containers/com.docker.docker/Data/log/ 2>/dev/null || echo "No Docker log dir"
+          cat ~/Library/Containers/com.docker.docker/Data/log/host/*.log 2>/dev/null || echo "No Docker logs found"
   ubuntu:
     runs-on: ubuntu-latest
     steps:
