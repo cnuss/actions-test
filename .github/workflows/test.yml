@@ -29,7 +29,7 @@ jobs:
       - name: Install container
         run: brew install container
       - name: Start container system
-        run: container system start
+        run: container system start --enable-kernel-install
       - name: Verify version
         run: container system version
       - name: System status
