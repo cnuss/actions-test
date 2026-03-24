@@ -34,3 +34,11 @@ jobs:
           docker ps
           docker stop lifecycle-test
           docker rm lifecycle-test
+      - name: Docker Desktop logs
+        if: always()
+        run: |
+          ls -la ~/Library/Containers/com.docker.docker/Data/log/ 2>/dev/null || echo "No Docker log dir"
+          sudo find /var/log -name '*docker*' -o -name '*Docker*' 2>/dev/null || echo "No docker in /var/log"
+          sudo find ~/Library -path '*/Docker*' -name '*.log' 2>/dev/null | head -20
+          cat ~/Library/Containers/com.docker.docker/Data/log/host/*.log 2>/dev/null || echo "No host logs"
+          sudo log show --predicate 'process == "Docker" OR process == "com.docker.vmnetd" OR process == "Docker Desktop"' --last 5m 2>/dev/null || echo "No system log entries"
