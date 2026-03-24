@@ -28,8 +28,12 @@ jobs:
     steps:
       - name: Check KVM availability
         run: |
-          ls -la /dev/kvm
           uname -m
+          sudo modprobe kvm || true
+          ls -la /dev/kvm 2>/dev/null || echo "No /dev/kvm"
+          egrep -c '(vmx|svm)' /proc/cpuinfo 2>/dev/null || echo "No hardware virt in cpuinfo"
+          lscpu | grep -i virt || echo "No virt in lscpu"
+          sudo apt-get install -y qemu-system-arm qemu-efi-aarch64
       - name: Install Lima
         run: |
           LIMA_VERSION=2.1.0
