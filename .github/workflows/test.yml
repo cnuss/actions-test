@@ -12,6 +12,11 @@ jobs:
     steps:
       - name: Install Docker Desktop
         run: brew install --cask docker
+      - name: Install Docker privileged helpers
+        run: |
+          sudo /Applications/Docker.app/Contents/MacOS/install privileged-components
+          sudo /Applications/Docker.app/Contents/MacOS/install vmnetd
+        continue-on-error: true
       - name: Start Docker Desktop with log tailing
         run: |
           mkdir -p ~/Library/Containers/com.docker.docker/Data/log/host
