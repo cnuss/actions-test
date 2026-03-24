@@ -38,8 +38,10 @@ jobs:
           sudo apt-get install -y qemu-system-arm qemu-utils
           LIMA_VERSION=2.1.0
           curl -fsSL https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/lima-${LIMA_VERSION}-Linux-aarch64.tar.gz | sudo tar xzf - -C /usr/local
+          curl -fsSL https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/lima-additional-guestagents-${LIMA_VERSION}-Linux-aarch64.tar.gz | sudo tar xzf - -C /usr/local
           limactl --version
           qemu-system-aarch64 --version
+          ls /usr/local/share/lima/lima-guestagent*
       - name: Create macOS VM config
         run: |
           cat > /tmp/macos.yaml << 'YAML'
