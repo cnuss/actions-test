@@ -6,73 +6,21 @@ on:
     branches:
       - main
 
-permissions:
-  actions: read
-  attestations: write
-  checks: read
-  contents: read
-  deployments: read
-  id-token: write
-  issues: read
-  models: read
-  discussions: read
-  packages: write
-  pages: read
-  pull-requests: write
-  security-events: read
-  statuses: write
-
 jobs:
-  macos-on-ubuntu:
-    runs-on: ubuntu-24.04-arm
+  lima-on-ubuntu:
+    runs-on: ubuntu-latest
     steps:
-      - name: System info
+      - name: Install Lima
         run: |
-          uname -m
-          sudo modprobe kvm || true
-          ls -la /dev/kvm 2>/dev/null || echo "No /dev/kvm"
-          lscpu | grep -iE 'virt|model' || true
-      - name: Install QEMU and Lima
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-system-arm qemu-utils
           LIMA_VERSION=2.1.0
-          curl -fsSL https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/lima-${LIMA_VERSION}-Linux-aarch64.tar.gz | sudo tar xzf - -C /usr/local
-          curl -fsSL https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/lima-additional-guestagents-${LIMA_VERSION}-Linux-aarch64.tar.gz | sudo tar xzf - -C /usr/local
-          curl -fsSL https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/lima-additional-guestagents-${LIMA_VERSION}-Darwin-arm64.tar.gz | sudo tar xzf - -C /usr/local
+          curl -fsSL https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/lima-${LIMA_VERSION}-Linux-x86_64.tar.gz | sudo tar xzf - -C /usr/local
           limactl --version
-          qemu-system-aarch64 --version
-          ls /usr/local/share/lima/lima-guestagent*
-      - name: Create macOS VM config
-        run: |
-          cat > /tmp/macos.yaml << 'YAML'
-          images:
-          - location: "https://updates.cdn-apple.com/2026WinterFCS/fullrestores/047-88313/2E098049-1731-4415-A206-546D09301973/UniversalMac_26.3.1_25D2128_Restore.ipsw"
-            arch: "aarch64"
-            digest: "sha256:4ff171ba3fa6db4758a2a7cedc8f24d44f4e3de8051a84400984872619abd6bc"
-          os: Darwin
-          arch: aarch64
-          vmType: qemu
-          cpus: 2
-          memory: 4GiB
-          disk: 30GiB
-          video:
-            display: "none"
-          YAML
-          cat /tmp/macos.yaml
-      - name: Start macOS VM
-        run: limactl start --name=macos /tmp/macos.yaml --tty=false
-        timeout-minutes: 30
-        continue-on-error: true
-      - name: List VMs
-        if: always()
+      - name: Start default VM
+        run: limactl start --name=default --tty=false
+        timeout-minutes: 10
+      - name: Verify VM is running
         run: limactl list
-      - name: Check VM status
-        if: always()
-        run: limactl shell macos uname -a
-        continue-on-error: true
-      - name: Lima logs
-        if: always()
-        run: |
-          cat ~/.lima/macos/*.log 2>/dev/null || echo "No Lima logs found"
-          ls -laR ~/.lima/macos/ 2>/dev/null || echo "No Lima dir"
+      - name: Run uname in VM
+        run: limactl shell default uname -a
+      - name: Run cat /etc/os-release in VM
+        run: limactl shell default cat /etc/os-release
