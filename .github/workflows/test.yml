@@ -10,7 +10,8 @@ jobs:
   lima-on-ubuntu:
     runs-on: macos-26-large
     steps:
-      - uses: lima-vm/lima-actions/setup@v1
+      - name: Install Lima
+        run: brew install lima
       - name: Start homebrew-macos VM
         run: limactl start template:homebrew-macos --tty=false
         timeout-minutes: 30
