@@ -13,7 +13,9 @@ jobs:
       - name: Install Docker Desktop
         run: brew install --cask docker
       - name: Install Docker privileged helpers
-        run: sudo /Applications/Docker.app/Contents/MacOS/Docker --unattended --install-privileged-components
+        run: |
+          ls -la /Applications/Docker.app/Contents/MacOS/
+          sudo /Applications/Docker.app/Contents/MacOS/Docker\ Desktop --unattended --install-privileged-components
       - name: Start Docker Desktop with log tailing
         run: |
           mkdir -p ~/Library/Containers/com.docker.docker/Data/log/host
