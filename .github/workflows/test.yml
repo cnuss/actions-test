@@ -39,6 +39,7 @@ jobs:
           LIMA_VERSION=2.1.0
           curl -fsSL https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/lima-${LIMA_VERSION}-Linux-aarch64.tar.gz | sudo tar xzf - -C /usr/local
           curl -fsSL https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/lima-additional-guestagents-${LIMA_VERSION}-Linux-aarch64.tar.gz | sudo tar xzf - -C /usr/local
+          curl -fsSL https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/lima-additional-guestagents-${LIMA_VERSION}-Darwin-arm64.tar.gz | sudo tar xzf - -C /usr/local
           limactl --version
           qemu-system-aarch64 --version
           ls /usr/local/share/lima/lima-guestagent*
