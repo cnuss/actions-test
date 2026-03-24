@@ -8,7 +8,7 @@ on:
 
 jobs:
   lima-on-ubuntu:
-    runs-on: macos-latest
+    runs-on: macos-26-large
     steps:
       - uses: lima-vm/lima-actions/setup@v1
       - name: Start homebrew-macos VM
