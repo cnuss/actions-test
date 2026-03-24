@@ -28,12 +28,12 @@ jobs:
     steps:
       - name: Install Lima
         run: brew install lima
-      - name: Lima version and templates
-        run: |
-          limactl --version
-          limactl template list
+      - name: Lima version
+        run: limactl --version
+      - name: List bundled templates
+        run: ls /opt/homebrew/share/lima/templates/ 2>/dev/null || echo "No bundled templates dir"
       - name: Start macOS Lima VM
-        run: limactl start template:homebrew-macos --tty=false
+        run: limactl start --name=homebrew-macos https://raw.githubusercontent.com/lima-vm/lima/master/templates/homebrew-macos.yaml --tty=false
         continue-on-error: true
       - name: List VMs
         run: limactl list
