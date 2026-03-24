@@ -28,19 +28,24 @@ jobs:
     steps:
       - name: Install Lima
         run: brew install lima
+      - name: Lima version and templates
+        run: |
+          limactl --version
+          limactl template list
       - name: Start macOS Lima VM
-        run: limactl start template://homebrew-macos --tty=false
+        run: limactl start template:homebrew-macos --tty=false
+        continue-on-error: true
+      - name: List VMs
+        run: limactl list
       - name: Get guest password
         run: limactl shell homebrew-macos cat /Users/${USER}.guest/password
+        continue-on-error: true
       - name: Install docker in Lima VM
         run: limactl shell homebrew-macos brew install docker
         continue-on-error: true
       - name: Check docker version in Lima VM
         run: limactl shell homebrew-macos docker version
         continue-on-error: true
-      - name: Lima VM info
-        if: always()
-        run: limactl list
   ubuntu:
     runs-on: ubuntu-latest
     steps:
