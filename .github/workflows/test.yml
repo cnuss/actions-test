@@ -8,12 +8,12 @@ on:
 
 jobs:
   lima-on-ubuntu:
-    runs-on: macos-26-large
+    runs-on: macos-26-xlarge
     steps:
       - name: Install Lima
         run: |
-          curl -fsSL https://github.com/lima-vm/lima/releases/download/v2.1.0/lima-2.1.0-Darwin-$(uname -m).tar.gz | sudo tar xzf - -C /usr/local
-          curl -fsSL https://github.com/lima-vm/lima/releases/download/v2.1.0/lima-additional-guestagents-2.1.0-Darwin-$(uname -m).tar.gz | sudo tar xzf - -C /usr/local
+          curl -fsSL https://github.com/lima-vm/lima/releases/download/v2.1.0/lima-2.1.0-Darwin-arm64.tar.gz | sudo tar xzf - -C /usr/local
+          curl -fsSL https://github.com/lima-vm/lima/releases/download/v2.1.0/lima-additional-guestagents-2.1.0-Darwin-arm64.tar.gz | sudo tar xzf - -C /usr/local
           limactl --version
       - name: Start homebrew-macos VM
         run: limactl start template:homebrew-macos --tty=false
