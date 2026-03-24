@@ -26,20 +26,20 @@ jobs:
   macos-on-ubuntu:
     runs-on: ubuntu-24.04-arm
     steps:
-      - name: Check KVM availability
+      - name: System info
         run: |
           uname -m
           sudo modprobe kvm || true
           ls -la /dev/kvm 2>/dev/null || echo "No /dev/kvm"
-          egrep -c '(vmx|svm)' /proc/cpuinfo 2>/dev/null || echo "No hardware virt in cpuinfo"
-          lscpu | grep -i virt || echo "No virt in lscpu"
-          sudo apt-get install -y qemu-system-arm qemu-efi-aarch64
-      - name: Install Lima
+          lscpu | grep -iE 'virt|model' || true
+      - name: Install QEMU and Lima
         run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-arm qemu-utils
           LIMA_VERSION=2.1.0
           curl -fsSL https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/lima-${LIMA_VERSION}-Linux-aarch64.tar.gz | sudo tar xzf - -C /usr/local
-      - name: Lima version
-        run: limactl --version
+          limactl --version
+          qemu-system-aarch64 --version
       - name: Create macOS VM config
         run: |
           cat > /tmp/macos.yaml << 'YAML'
@@ -56,9 +56,10 @@ jobs:
           video:
             display: "none"
           YAML
+          cat /tmp/macos.yaml
       - name: Start macOS VM
         run: limactl start --name=macos /tmp/macos.yaml --tty=false
-        timeout-minutes: 15
+        timeout-minutes: 30
         continue-on-error: true
       - name: List VMs
         if: always()
