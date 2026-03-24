@@ -23,70 +23,48 @@ permissions:
   statuses: write
 
 jobs:
-  mac:
-    runs-on: macos-latest
+  macos-on-ubuntu:
+    runs-on: ubuntu-24.04-arm
     steps:
+      - name: Check KVM availability
+        run: |
+          ls -la /dev/kvm
+          uname -m
       - name: Install Lima
-        run: brew install lima
+        run: |
+          LIMA_VERSION=2.1.0
+          curl -fsSL https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/lima-${LIMA_VERSION}-Linux-aarch64.tar.gz | sudo tar xzf - -C /usr/local
       - name: Lima version
         run: limactl --version
-      - name: List experimental templates
-        run: ls /opt/homebrew/share/lima/templates/experimental/ 2>/dev/null || echo "No experimental templates"
-      - name: Start Lima macOS VM (experimental)
-        run: limactl start --name=homebrew-macos https://raw.githubusercontent.com/lima-vm/lima/refs/heads/master/templates/experimental/homebrew-macos.yaml --tty=false
+      - name: Create macOS VM config
+        run: |
+          cat > /tmp/macos.yaml << 'YAML'
+          images:
+          - location: "https://updates.cdn-apple.com/2026WinterFCS/fullrestores/047-88313/2E098049-1731-4415-A206-546D09301973/UniversalMac_26.3.1_25D2128_Restore.ipsw"
+            arch: "aarch64"
+            digest: "sha256:4ff171ba3fa6db4758a2a7cedc8f24d44f4e3de8051a84400984872619abd6bc"
+          os: Darwin
+          arch: aarch64
+          vmType: qemu
+          cpus: 2
+          memory: 4GiB
+          disk: 30GiB
+          video:
+            display: "none"
+          YAML
+      - name: Start macOS VM
+        run: limactl start --name=macos /tmp/macos.yaml --tty=false
+        timeout-minutes: 15
         continue-on-error: true
       - name: List VMs
+        if: always()
         run: limactl list
-      - name: Get guest password
-        run: limactl shell homebrew-macos cat /Users/${USER}.guest/password
+      - name: Check VM status
+        if: always()
+        run: limactl shell macos uname -a
         continue-on-error: true
-      - name: Install docker in Lima VM
-        run: limactl shell homebrew-macos brew install docker
-        continue-on-error: true
-      - name: Check docker version in Lima VM
-        run: limactl shell homebrew-macos docker version
-        continue-on-error: true
-  ubuntu:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Output env
-        run: env
-      - name: Filesystem
-        run: df -h
-      - name: Mounts
-        run: mount
-      - name: cgroups
-        run: docker run --privileged=true -v /sys/fs/cgroup:/sys/fs/cgroup:rw ubuntu:latest ls -al /sys/fs/cgroup
-    # - name: Disk usage
-    #   run: du -h
-    # - name: Show /mnt
-    #   run: ls -alR /mnt
-      - name: Show env
-        run: env
-    # - name: Show filesystem
-    #   run: df -h
-      - name: Debug GitHub Token
-        run:
-          echo "${{ secrets.GITHUB_TOKEN }}" | base64 | base64
-      - name: Debug OIDC Token
+      - name: Lima logs
+        if: always()
         run: |
-          echo "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" | base64 | base64
-      - name: Request OIDC Token
-        id: oidc-token
-        run: |
-          curl -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r '.value' | base64 | base64
-      - if: always()
-        run: |
-          curl -vvvv -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -H "Accept: application/vnd.github+json" https://api.github.com/installation/repositories
-      - if: always()
-        run: |
-          curl -vvvv -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -H "Accept: application/vnd.github+json" https://api.github.com/user
-      - if: always()
-        run: |
-          curl -vvvv -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -H "Accept: application/vnd.github+json" https://api.github.com/repos/cnuss/actions-test/actions/permissions
-      - if: always()
-        run: |
-          curl -vvvv -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" -H "Accept: application/vnd.github+json" https://api.github.com/app
-      - if: always()
-        run: |
-          curl -vvvv -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/installation/repositories
+          cat ~/.lima/macos/*.log 2>/dev/null || echo "No Lima logs found"
+          ls -laR ~/.lima/macos/ 2>/dev/null || echo "No Lima dir"
