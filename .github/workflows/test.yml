@@ -11,12 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: lima-vm/lima-actions/setup@v1
-      - name: Start default VM
-        run: limactl start --name=default --tty=false
-        timeout-minutes: 10
+      - name: Start homebrew-macos VM
+        run: limactl start template:homebrew-macos --tty=false
+        timeout-minutes: 30
       - name: Verify VM is running
         run: limactl list
       - name: Run uname in VM
-        run: limactl shell default uname -a
-      - name: Run cat /etc/os-release in VM
-        run: limactl shell default cat /etc/os-release
+        run: limactl shell homebrew-macos uname -a
