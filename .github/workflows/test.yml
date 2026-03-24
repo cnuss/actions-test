@@ -10,11 +10,7 @@ jobs:
   lima-on-ubuntu:
     runs-on: ubuntu-latest
     steps:
-      - name: Install Lima
-        run: |
-          LIMA_VERSION=2.1.0
-          curl -fsSL https://github.com/lima-vm/lima/releases/download/v${LIMA_VERSION}/lima-${LIMA_VERSION}-Linux-x86_64.tar.gz | sudo tar xzf - -C /usr/local
-          limactl --version
+      - uses: lima-vm/lima-actions/setup@v1
       - name: Start default VM
         run: limactl start --name=default --tty=false
         timeout-minutes: 10
