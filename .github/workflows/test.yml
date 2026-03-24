@@ -7,18 +7,30 @@ on:
       - main
 
 jobs:
-  lima-on-ubuntu:
+  docker-on-macos:
     runs-on: macos-26-xlarge
     steps:
-      - name: Install Lima
+      - name: Install Docker Desktop
+        run: brew install --cask docker
+      - name: Start Docker Desktop
         run: |
-          curl -fsSL https://github.com/lima-vm/lima/releases/download/v2.1.0/lima-2.1.0-Darwin-arm64.tar.gz | sudo tar xzf - -C /usr/local
-          curl -fsSL https://github.com/lima-vm/lima/releases/download/v2.1.0/lima-additional-guestagents-2.1.0-Darwin-arm64.tar.gz | sudo tar xzf - -C /usr/local
-          limactl --version
-      - name: Start homebrew-macos VM
-        run: limactl start template:homebrew-macos --tty=false
-        timeout-minutes: 30
-      - name: Verify VM is running
-        run: limactl list
-      - name: Run uname in VM
-        run: limactl shell homebrew-macos uname -a
+          open /Applications/Docker.app
+          echo "Waiting for Docker to start..."
+          for i in $(seq 1 120); do
+            if docker info >/dev/null 2>&1; then
+              echo "Docker is ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          docker info
+      - name: docker version
+        run: docker version
+      - name: Run hello-world
+        run: docker run --rm hello-world
+      - name: Container lifecycle
+        run: |
+          docker run -d --name lifecycle-test alpine:latest sleep 30
+          docker ps
+          docker stop lifecycle-test
+          docker rm lifecycle-test
