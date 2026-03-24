@@ -12,11 +12,15 @@ jobs:
     steps:
       - name: Install Docker Desktop
         run: brew install --cask docker
-      - name: Start Docker Desktop
+      - name: Start Docker Desktop with log tailing
         run: |
+          mkdir -p ~/Library/Containers/com.docker.docker/Data/log/host
+          touch ~/Library/Containers/com.docker.docker/Data/log/host/Docker.log
+          tail -f ~/Library/Containers/com.docker.docker/Data/log/host/*.log &
+          sudo log stream --predicate 'process == "Docker" OR process == "com.docker.vmnetd" OR process == "Docker Desktop" OR process == "com.docker.backend"' &
           open /Applications/Docker.app
           echo "Waiting for Docker to start..."
-          for i in $(seq 1 120); do
+          for i in $(seq 1 180); do
             if docker info >/dev/null 2>&1; then
               echo "Docker is ready after ${i}s"
               break
@@ -24,6 +28,7 @@ jobs:
             sleep 1
           done
           docker info
+        timeout-minutes: 5
       - name: docker version
         run: docker version
       - name: Run hello-world
@@ -37,8 +42,5 @@ jobs:
       - name: Docker Desktop logs
         if: always()
         run: |
-          ls -la ~/Library/Containers/com.docker.docker/Data/log/ 2>/dev/null || echo "No Docker log dir"
-          sudo find /var/log -name '*docker*' -o -name '*Docker*' 2>/dev/null || echo "No docker in /var/log"
-          sudo find ~/Library -path '*/Docker*' -name '*.log' 2>/dev/null | head -20
           cat ~/Library/Containers/com.docker.docker/Data/log/host/*.log 2>/dev/null || echo "No host logs"
-          sudo log show --predicate 'process == "Docker" OR process == "com.docker.vmnetd" OR process == "Docker Desktop"' --last 5m 2>/dev/null || echo "No system log entries"
+          sudo find ~/Library -path '*Docker*' -name '*.log' 2>/dev/null | head -20
