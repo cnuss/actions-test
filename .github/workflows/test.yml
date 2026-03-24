@@ -26,51 +26,21 @@ jobs:
   mac:
     runs-on: macos-latest
     steps:
-      - name: Install Docker Desktop
-        run: |
-          brew install --cask docker
-          echo "Docker Desktop installed"
-      - name: Start Docker Desktop
-        run: |
-          open -a Docker
-          echo "Waiting for Docker to start..."
-          for i in $(seq 1 60); do
-            if docker info >/dev/null 2>&1; then
-              echo "Docker is ready after ${i}s"
-              break
-            fi
-            sleep 1
-          done
-          docker info || echo "Docker failed to start within 60s"
-      - name: Spot check - docker version
-        run: docker version
+      - name: Install Lima
+        run: brew install lima
+      - name: Start macOS Lima VM
+        run: limactl start template://homebrew-macos --tty=false
+      - name: Get guest password
+        run: limactl shell homebrew-macos cat /Users/${USER}.guest/password
+      - name: Install docker in Lima VM
+        run: limactl shell homebrew-macos brew install docker
         continue-on-error: true
-      - name: Spot check - run hello-world
-        run: docker run --rm hello-world
+      - name: Check docker version in Lima VM
+        run: limactl shell homebrew-macos docker version
         continue-on-error: true
-      - name: Spot check - pull and list images
-        run: |
-          docker pull alpine:latest
-          docker image ls
-        continue-on-error: true
-      - name: Spot check - container lifecycle
-        run: |
-          docker run -d --name lifecycle-test alpine:latest sleep 30
-          docker ps
-          docker logs lifecycle-test
-          docker stop lifecycle-test
-          docker rm lifecycle-test
-        continue-on-error: true
-      - name: Spot check - volume mount
-        run: |
-          echo "hello from host" > /tmp/test-mount.txt
-          docker run --rm -v /tmp/test-mount.txt:/data/test.txt:ro alpine:latest cat /data/test.txt
-        continue-on-error: true
-      - name: Docker logs
+      - name: Lima VM info
         if: always()
-        run: |
-          ls -la ~/Library/Containers/com.docker.docker/Data/log/ 2>/dev/null || echo "No Docker log dir"
-          cat ~/Library/Containers/com.docker.docker/Data/log/host/*.log 2>/dev/null || echo "No Docker logs found"
+        run: limactl list
   ubuntu:
     runs-on: ubuntu-latest
     steps:
