@@ -30,10 +30,10 @@ jobs:
         run: brew install lima
       - name: Lima version
         run: limactl --version
-      - name: List bundled templates
-        run: ls /opt/homebrew/share/lima/templates/ 2>/dev/null || echo "No bundled templates dir"
-      - name: Start macOS Lima VM
-        run: limactl start --name=homebrew-macos https://raw.githubusercontent.com/lima-vm/lima/master/templates/homebrew-macos.yaml --tty=false
+      - name: List experimental templates
+        run: ls /opt/homebrew/share/lima/templates/experimental/ 2>/dev/null || echo "No experimental templates"
+      - name: Start Lima macOS VM (experimental)
+        run: limactl start --name=homebrew-macos https://raw.githubusercontent.com/lima-vm/lima/refs/heads/master/templates/experimental/homebrew-macos.yaml --tty=false
         continue-on-error: true
       - name: List VMs
         run: limactl list
