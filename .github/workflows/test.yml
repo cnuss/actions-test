@@ -11,7 +11,7 @@ jobs:
     runs-on: macos-26-large
     steps:
       - name: Install Lima
-        run: brew install lima
+        run: brew install --HEAD lima
       - name: Start homebrew-macos VM
         run: limactl start template:homebrew-macos --tty=false
         timeout-minutes: 30
