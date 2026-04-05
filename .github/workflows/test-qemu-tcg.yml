@@ -13,12 +13,34 @@ jobs:
     steps:
       - name: Check hypervisor support
         run: |
-          echo "kern.hv_support: $(sysctl -n kern.hv_support)"
+          sysctl kern.hv_support 2>&1 || true
+          sysctl kern.hv 2>&1 || true
           uname -m
           sysctl machdep.cpu.brand_string
 
       - name: Install QEMU, colima, and Docker CLI
         run: brew install qemu colima docker
+
+      - name: Check QEMU accelerators
+        run: |
+          qemu-system-aarch64 --accel help
+          qemu-system-aarch64 --version
+
+      - name: Test raw QEMU TCG boot
+        run: |
+          qemu-system-aarch64 \
+            -M virt \
+            -accel tcg \
+            -cpu max \
+            -m 512 \
+            -nographic \
+            -no-reboot \
+            -bios /opt/homebrew/share/qemu/edk2-aarch64-code.fd \
+            -serial mon:stdio &
+          QEMU_PID=$!
+          sleep 5
+          kill $QEMU_PID 2>/dev/null || true
+          echo "QEMU TCG process ran successfully (PID $QEMU_PID)"
 
       - name: Start colima with QEMU
         run: colima start --vm-type qemu --cpu 4 --memory 4 --disk 20 --verbose
@@ -44,6 +66,10 @@ jobs:
         if: always()
         run: colima status --verbose || true
 
-      - name: Colima logs
+      - name: QEMU serial log
         if: failure()
-        run: colima logs || true
+        run: cat ~/.colima/_lima/colima/serial*.log 2>/dev/null || echo "No serial logs found"
+
+      - name: Lima hostagent log
+        if: failure()
+        run: cat ~/.colima/_lima/colima/ha.stderr.log 2>/dev/null || echo "No hostagent logs found"
