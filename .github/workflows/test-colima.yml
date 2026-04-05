@@ -2,25 +2,32 @@ name: Docker via Colima (QEMU TCG)
 
 on:
   workflow_dispatch:
+    inputs:
+      force-tcg:
+        description: 'Wrap QEMU to force TCG (software emulation) over HVF'
+        type: boolean
+        default: true
   push:
     branches:
       - main
 
 jobs:
   docker-colima-tcg:
-    runs-on: macos-26-xlarge
+    runs-on: macos-26
     timeout-minutes: 30
     steps:
       - name: Check hypervisor support
         run: |
-          sysctl kern.hv_support 2>&1 || true
+          sysctl kern.hv_support 2>&1 || echo "kern.hv_support: not available"
+          sysctl kern.hv 2>&1 || echo "kern.hv: not available"
           uname -m
-          sysctl machdep.cpu.brand_string
+          sysctl machdep.cpu.brand_string 2>&1 || echo "cpu brand: not available"
 
       - name: Install QEMU, colima, and Docker CLI
         run: brew install qemu colima docker
 
       - name: Wrap QEMU to force TCG
+        if: inputs.force-tcg != 'false'
         run: |
           QEMU_BIN="/opt/homebrew/bin/qemu-system-aarch64"
           sudo mv "$QEMU_BIN" "${QEMU_BIN}.real"
