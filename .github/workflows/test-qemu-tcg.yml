@@ -78,17 +78,17 @@ jobs:
         run: limactl list
 
       - name: Docker info via Lima
-        run: limactl shell docker-tcg -- docker info
+        run: limactl shell docker-tcg -- sudo docker info
 
       - name: Run hello-world
-        run: limactl shell docker-tcg -- docker run --rm hello-world
+        run: limactl shell docker-tcg -- sudo docker run --rm hello-world
 
       - name: Container lifecycle
         run: |
-          limactl shell docker-tcg -- docker run -d --name lifecycle-test alpine:latest sleep 30
-          limactl shell docker-tcg -- docker ps
-          limactl shell docker-tcg -- docker stop lifecycle-test
-          limactl shell docker-tcg -- docker rm lifecycle-test
+          limactl shell docker-tcg -- sudo docker run -d --name lifecycle-test alpine:latest sleep 30
+          limactl shell docker-tcg -- sudo docker ps
+          limactl shell docker-tcg -- sudo docker stop lifecycle-test
+          limactl shell docker-tcg -- sudo docker rm lifecycle-test
 
       - name: QEMU serial log
         if: failure()
