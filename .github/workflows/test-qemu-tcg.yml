@@ -14,62 +14,90 @@ jobs:
       - name: Check hypervisor support
         run: |
           sysctl kern.hv_support 2>&1 || true
-          sysctl kern.hv 2>&1 || true
           uname -m
           sysctl machdep.cpu.brand_string
 
-      - name: Install QEMU, colima, and Docker CLI
-        run: brew install qemu colima docker
+      - name: Install QEMU, Lima, and Docker CLI
+        run: brew install qemu lima docker
 
-      - name: Check QEMU accelerators
+      - name: Wrap QEMU to force TCG
         run: |
-          qemu-system-aarch64 --accel help
+          QEMU_BIN="/opt/homebrew/bin/qemu-system-aarch64"
+          sudo mv "$QEMU_BIN" "${QEMU_BIN}.real"
+          cat > /tmp/qemu-wrapper.sh << 'WRAPPER'
+          #!/bin/bash
+          args=()
+          for arg in "$@"; do
+            arg="${arg//accel=hvf/accel=tcg}"
+            args+=("$arg")
+          done
+          final=()
+          for i in "${!args[@]}"; do
+            if [[ "${args[$i]}" == "host" && $i -gt 0 && "${args[$((i-1))]}" == "-cpu" ]]; then
+              final+=("max")
+            else
+              final+=("${args[$i]}")
+            fi
+          done
+          exec /opt/homebrew/bin/qemu-system-aarch64.real "${final[@]}"
+          WRAPPER
+          sudo mv /tmp/qemu-wrapper.sh "$QEMU_BIN"
+          sudo chmod +x "$QEMU_BIN"
+          echo "Wrapper installed. Verifying:"
+          cat "$QEMU_BIN"
+
+      - name: Verify wrapper works
+        run: |
           qemu-system-aarch64 --version
+          qemu-system-aarch64 --accel help
 
-      - name: Test raw QEMU TCG boot
+      - name: Start Lima with Docker
         run: |
-          qemu-system-aarch64 \
-            -M virt \
-            -accel tcg \
-            -cpu max \
-            -m 512 \
-            -nographic \
-            -no-reboot \
-            -bios /opt/homebrew/share/qemu/edk2-aarch64-code.fd \
-            -serial mon:stdio &
-          QEMU_PID=$!
-          sleep 5
-          kill $QEMU_PID 2>/dev/null || true
-          echo "QEMU TCG process ran successfully (PID $QEMU_PID)"
+          cat > /tmp/docker-tcg.yaml << 'YAML'
+          images:
+            - location: https://cloud-images.ubuntu.com/releases/noble/release/ubuntu-24.04-server-cloudimg-arm64.img
+              arch: aarch64
+          cpus: 4
+          memory: 4GiB
+          disk: 20GiB
+          provision:
+            - mode: system
+              script: |
+                #!/bin/bash
+                set -eux
+                export DEBIAN_FRONTEND=noninteractive
+                curl -fsSL https://get.docker.com | sh
+                systemctl enable --now docker
+                usermod -aG docker "${LIMA_CIDATA_USER}"
+          YAML
+          limactl start --vm-type qemu --name docker-tcg /tmp/docker-tcg.yaml --tty=false
+        timeout-minutes: 15
 
-      - name: Start colima with QEMU
-        run: colima start --vm-type qemu --cpu 4 --memory 4 --disk 20 --verbose
-        timeout-minutes: 10
+      - name: Lima instance info
+        if: always()
+        run: limactl list
 
-      - name: Docker info
-        run: docker info
-
-      - name: Docker version
-        run: docker version
+      - name: Docker info via Lima
+        run: limactl shell docker-tcg -- docker info
 
       - name: Run hello-world
-        run: docker run --rm hello-world
+        run: limactl shell docker-tcg -- docker run --rm hello-world
 
       - name: Container lifecycle
         run: |
-          docker run -d --name lifecycle-test alpine:latest sleep 30
-          docker ps
-          docker stop lifecycle-test
-          docker rm lifecycle-test
-
-      - name: Colima status
-        if: always()
-        run: colima status --verbose || true
+          limactl shell docker-tcg -- docker run -d --name lifecycle-test alpine:latest sleep 30
+          limactl shell docker-tcg -- docker ps
+          limactl shell docker-tcg -- docker stop lifecycle-test
+          limactl shell docker-tcg -- docker rm lifecycle-test
 
       - name: QEMU serial log
         if: failure()
-        run: cat ~/.colima/_lima/colima/serial*.log 2>/dev/null || echo "No serial logs found"
+        run: cat ~/.lima/docker-tcg/serial*.log 2>/dev/null || echo "No serial logs found"
 
       - name: Lima hostagent log
         if: failure()
-        run: cat ~/.colima/_lima/colima/ha.stderr.log 2>/dev/null || echo "No hostagent logs found"
+        run: cat ~/.lima/docker-tcg/ha.stderr.log 2>/dev/null || echo "No hostagent logs found"
+
+      - name: Cleanup
+        if: always()
+        run: limactl stop docker-tcg --force 2>/dev/null || true
