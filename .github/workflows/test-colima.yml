@@ -27,7 +27,7 @@ jobs:
         run: brew install qemu colima docker
 
       - name: Wrap QEMU to force TCG
-        if: inputs.force-tcg != 'false'
+        if: inputs.force-tcg == true || github.event_name == 'push'
         run: |
           QEMU_BIN="/opt/homebrew/bin/qemu-system-aarch64"
           sudo mv "$QEMU_BIN" "${QEMU_BIN}.real"
