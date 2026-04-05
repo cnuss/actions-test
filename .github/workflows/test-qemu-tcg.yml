@@ -1,0 +1,49 @@
+name: Docker via QEMU TCG
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  docker-qemu-tcg:
+    runs-on: macos-26-xlarge
+    timeout-minutes: 30
+    steps:
+      - name: Check hypervisor support
+        run: |
+          echo "kern.hv_support: $(sysctl -n kern.hv_support)"
+          uname -m
+          sysctl machdep.cpu.brand_string
+
+      - name: Install QEMU, colima, and Docker CLI
+        run: brew install qemu colima docker
+
+      - name: Start colima with QEMU
+        run: colima start --vm-type qemu --cpu 4 --memory 4 --disk 20 --verbose
+        timeout-minutes: 10
+
+      - name: Docker info
+        run: docker info
+
+      - name: Docker version
+        run: docker version
+
+      - name: Run hello-world
+        run: docker run --rm hello-world
+
+      - name: Container lifecycle
+        run: |
+          docker run -d --name lifecycle-test alpine:latest sleep 30
+          docker ps
+          docker stop lifecycle-test
+          docker rm lifecycle-test
+
+      - name: Colima status
+        if: always()
+        run: colima status --verbose || true
+
+      - name: Colima logs
+        if: failure()
+        run: colima logs || true
