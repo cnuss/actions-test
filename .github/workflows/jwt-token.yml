@@ -1,0 +1,67 @@
+name: Decode OIDC Token
+
+on:
+  workflow_dispatch:
+  push:
+    - main
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  decode-id-token:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Request OIDC token
+        id: oidc
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "GitHub OIDC environment variables are not available."
+            exit 1
+          fi
+
+          response="$(curl -sSfL \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=jwt-debug")"
+
+          token="$(printf '%s' "$response" | jq -r '.value')"
+
+          if [ -z "$token" ] || [ "$token" = "null" ]; then
+            echo "Failed to retrieve OIDC token"
+            echo "$response"
+            exit 1
+          fi
+
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Decode JWT header and claims
+        shell: bash
+        env:
+          TOKEN: ${{ steps.oidc.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+
+          token = os.environ["TOKEN"]
+          parts = token.split(".")
+          if len(parts) != 3:
+              raise SystemExit("Token is not a JWT")
+
+          def decode(part: str):
+              padded = part + '=' * (-len(part) % 4)
+              return json.loads(base64.urlsafe_b64decode(padded.encode()).decode())
+
+          print("JWT header:")
+          print(json.dumps(decode(parts[0]), indent=2, sort_keys=True))
+          print()
+          print("JWT claims:")
+          print(json.dumps(decode(parts[1]), indent=2, sort_keys=True))
+          PY
