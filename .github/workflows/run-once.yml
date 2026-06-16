@@ -23,7 +23,7 @@ jobs:
     steps:
       - name: Run once across all shards
         id: once
-        uses: cnuss/actions-run-once@main
+        uses: cnuss/actions-run-once@v1
         with:
           key: run-once-demo-${{ github.run_id }}-${{ github.run_attempt }}
           run: |
