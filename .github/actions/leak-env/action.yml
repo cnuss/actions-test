@@ -1,0 +1,22 @@
+name: leak-env (busybox)
+description: Pure-shell docker action — dump which ACTIONS_* vars the runner injects into a container, and export them to $GITHUB_ENV.
+runs:
+  using: docker
+  image: docker://busybox:1.36
+  entrypoint: /bin/sh
+  args:
+    - -c
+    - |
+      echo "===== ACTIONS_* visible inside busybox container ====="
+      env | grep -E '^ACTIONS_' | sed -E 's/(TOKEN=).*/\1<redacted>/' | sort
+      echo "===== exporting to GITHUB_ENV ====="
+      : "${GITHUB_ENV:?no GITHUB_ENV mounted}"
+      for v in ACTIONS_RESULTS_URL ACTIONS_CACHE_URL ACTIONS_RUNTIME_URL ACTIONS_RUNTIME_TOKEN; do
+        eval "val=\$$v"
+        if [ -n "$val" ]; then
+          echo "$v=$val" >> "$GITHUB_ENV"
+          echo "  exported $v ($(echo "$val" | sed -E 's/^(.{0,40}).*/\1.../'))"
+        else
+          echo "  MISSING $v"
+        fi
+      done

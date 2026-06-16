@@ -1,0 +1,31 @@
+name: Probe docker env
+
+# Does a busybox docker action get ACTIONS_RESULTS_URL injected?
+# If yes -> pure-shell bootstrap, no node anywhere.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/probe-docker-env.yml'
+      - '.github/actions/leak-env/action.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  probe-docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Leak env via busybox container
+        uses: ./.github/actions/leak-env
+      - name: Confirm vars landed in bash (no node used)
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "RESULTS_URL = ${ACTIONS_RESULTS_URL:-<missing>}"
+          echo "CACHE_URL   = ${ACTIONS_CACHE_URL:-<missing>}"
+          echo "RUNTIME_URL = ${ACTIONS_RUNTIME_URL:-<missing>}"
+          if [ -n "${ACTIONS_RUNTIME_TOKEN:-}" ]; then echo "RUNTIME_TOKEN = <present>"; else echo "RUNTIME_TOKEN = <missing>"; fi
