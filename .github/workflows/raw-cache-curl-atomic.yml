@@ -2,14 +2,15 @@ name: Raw cURL Cache Service (atomicity probe)
 
 # Copy of raw-cache-curl.yml, reworked to probe how atomic the cache service is.
 #
-# The save job is now a MATRIX of concurrent racers that all target the SAME
-# key+version (derived deterministically from the run id, so identical across
-# legs but unique per run). Each racer runs a "get or save":
+# The save job is a MATRIX of concurrent racers that all target the SAME
+# hard-coded key+version. NO opening GET -- every racer goes straight to
+# CreateCacheEntry so they collide on the reservation:
 #
-#   1. GetCacheEntryDownloadURL  -> hit? print + done (somebody already saved)
-#   2. miss -> CreateCacheEntry  -> winner gets signed_upload_url; losers get
-#                                   no url (key+version already reserved)
-#   3. winner: PUT blob -> FinalizeCacheEntryUpload
+#   1. CreateCacheEntry  -> winner gets signed_upload_url; losers get no url
+#                           (key+version already reserved)
+#   2. winner: PUT blob -> FinalizeCacheEntryUpload
+#   3. loser:  re-GET    -> probe whether a RESERVED-but-not-FINALIZED entry
+#                           is already downloadable
 #
 # Things this exposes:
 #   - Is CreateCacheEntry's reservation atomic? (exactly one racer should win)
@@ -71,17 +72,9 @@ jobs:
               -d "$(jq -n --arg k "$CACHE_KEY" --arg v "$CACHE_VERSION" '{key:$k, restore_keys:[], version:$v}')"
           }
 
-          # ---- 1. GET first: is it already there? --------------------------
-          dl="$(get_url)"
-          echo "[$RACER] GetCacheEntryDownloadURL(before save): $dl"
-          if [ "$(printf '%s' "$dl" | jq -r '.ok // false')" = "true" ]; then
-            url="$(printf '%s' "$dl" | jq -r '.signed_download_url // .signedDownloadUrl')"
-            curl -sS "$url" -o hit.json || true
-            echo "[$RACER] HIT before saving -> $(jq -rc . hit.json 2>/dev/null || echo '<blob not readable>')"
-            echo "[$RACER] done (no save needed)"
-            exit 0
-          fi
-          echo "[$RACER] miss -> attempting to reserve via CreateCacheEntry"
+          # NOTE: no opening GET. All racers go STRAIGHT to CreateCacheEntry so
+          # they collide on the reservation, instead of serializing behind a
+          # finalized entry. This is the actual atomicity stress test.
 
           # ---- payload: "hello world" + which racer won --------------------
           jq -n \
