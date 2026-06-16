@@ -26,6 +26,7 @@ jobs:
         uses: cnuss/actions-run-once@main
         with:
           key: run-once-demo-${{ github.run_id }}-${{ github.run_attempt }}
+          debug: true
           run: |
             echo "winner=shard-${{ matrix.shard }} at $(date -u +%H:%M:%S) host=$(hostname)"
 
