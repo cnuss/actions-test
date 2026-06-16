@@ -90,9 +90,9 @@ jobs:
             --data-binary @payload.json
           echo "uploaded $size bytes to blob"
 
-          # ---- 3. FinalizeCacheEntry ----------------------------------------
+          # ---- 3. FinalizeCacheEntryUpload ----------------------------------
           final="$(curl -sS -X POST \
-            "$base/FinalizeCacheEntry" \
+            "$base/FinalizeCacheEntryUpload" \
             -H "Authorization: Bearer ${ACTIONS_RUNTIME_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "$(jq -n --arg k "$CACHE_KEY" --arg v "$CACHE_VERSION" --argjson s "$size" '{key:$k, version:$v, size_bytes:$s}')")"
