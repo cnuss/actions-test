@@ -28,7 +28,7 @@ jobs:
       # cache step's env below.
       - name: Get Actions runtime identity
         id: identity
-        uses: cnuss/actions-identity@main
+        uses: cnuss/actions-identity@v1
 
       - name: Compute cache key + version
         id: meta
@@ -114,7 +114,7 @@ jobs:
     steps:
       - name: Get Actions runtime identity
         id: identity
-        uses: cnuss/actions-identity@main
+        uses: cnuss/actions-identity@v1
 
       - name: Restore + print value saved by job 1
         shell: bash
