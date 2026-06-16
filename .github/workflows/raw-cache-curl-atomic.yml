@@ -39,7 +39,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        racer: [r1, r2, r3]
+        racer: [r1, r2, r3, r4, r5, r6, r7, r8, r9, r10]
     steps:
       # ACTIONS_RUNTIME_TOKEN / ACTIONS_RESULTS_URL are NOT passed to `run:`
       # shells. The actions-identity node action reads them from its (runner-
