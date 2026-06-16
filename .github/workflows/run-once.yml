@@ -1,0 +1,34 @@
+name: run-once action
+
+# Exercises cnuss/actions-run-once: a matrix of shards all call the action with
+# the same per-run key. Exactly one shard should run the script; every shard
+# should print the SAME winner output (same shard id + timestamp).
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  shards:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    steps:
+      - name: Run once across all shards
+        id: once
+        uses: cnuss/actions-run-once@main
+        with:
+          key: run-once-demo-${{ github.run_id }}-${{ github.run_attempt }}
+          run: |
+            echo "winner=shard-${{ matrix.shard }} at $(date -u +%H:%M:%S) host=$(hostname)"
+
+      - name: Show what this shard sees
+        run: |
+          echo "[shard ${{ matrix.shard }}] output = ${{ steps.once.outputs.output }}"
