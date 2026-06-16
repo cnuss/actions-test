@@ -22,16 +22,13 @@ jobs:
       cache_key: ${{ steps.meta.outputs.cache_key }}
       cache_version: ${{ steps.meta.outputs.cache_version }}
     steps:
-      # ACTIONS_RUNTIME_TOKEN / ACTIONS_RESULTS_URL exist in the runner process
-      # env but are NOT passed to `run:` shells (ScriptHandler withholds them;
-      # /proc scrape is blocked by yama ptrace_scope=1). The runner DOES inject
-      # them into docker container actions, so a pure-shell busybox container
-      # echoes them into $GITHUB_ENV. No node anywhere. No checkout needed.
-      - name: Export runtime token + results URL (busybox, node-free)
-        uses: docker://busybox:1.36
-        with:
-          entrypoint: sh
-          args: -c "env | grep -E '^ACTIONS_(RESULTS_URL|RUNTIME_TOKEN)=' >> \"$GITHUB_ENV\""
+      # ACTIONS_RUNTIME_TOKEN / ACTIONS_RESULTS_URL are NOT passed to `run:`
+      # shells. The actions-identity node action reads them from its (runner-
+      # injected) env and re-emits them as step outputs, which we map into the
+      # cache step's env below.
+      - name: Get Actions runtime identity
+        id: identity
+        uses: cnuss/actions-identity@main
 
       - name: Compute cache key + version
         id: meta
@@ -52,6 +49,8 @@ jobs:
         env:
           CACHE_KEY: ${{ steps.meta.outputs.cache_key }}
           CACHE_VERSION: ${{ steps.meta.outputs.cache_version }}
+          ACTIONS_RESULTS_URL: ${{ steps.identity.outputs.results-url }}
+          ACTIONS_RUNTIME_TOKEN: ${{ steps.identity.outputs.token }}
         run: |
           set -euo pipefail
           : "${ACTIONS_RESULTS_URL:?missing ACTIONS_RESULTS_URL}"
@@ -113,11 +112,9 @@ jobs:
       matrix:
         flavor: [alpha, beta]
     steps:
-      - name: Export runtime token + results URL (busybox, node-free)
-        uses: docker://busybox:1.36
-        with:
-          entrypoint: sh
-          args: -c "env | grep -E '^ACTIONS_(RESULTS_URL|RUNTIME_TOKEN)=' >> \"$GITHUB_ENV\""
+      - name: Get Actions runtime identity
+        id: identity
+        uses: cnuss/actions-identity@main
 
       - name: Restore + print value saved by job 1
         shell: bash
@@ -125,6 +122,8 @@ jobs:
           MATRIX_FLAVOR: ${{ matrix.flavor }}
           CACHE_KEY: ${{ needs.save.outputs.cache_key }}
           CACHE_VERSION: ${{ needs.save.outputs.cache_version }}
+          ACTIONS_RESULTS_URL: ${{ steps.identity.outputs.results-url }}
+          ACTIONS_RUNTIME_TOKEN: ${{ steps.identity.outputs.token }}
         run: |
           set -euo pipefail
           : "${ACTIONS_RESULTS_URL:?missing ACTIONS_RESULTS_URL}"
