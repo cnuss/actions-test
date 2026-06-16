@@ -1,0 +1,174 @@
+name: Raw cURL Cache Service (atomicity probe)
+
+# Copy of raw-cache-curl.yml, reworked to probe how atomic the cache service is.
+#
+# The save job is now a MATRIX of concurrent racers that all target the SAME
+# key+version (derived deterministically from the run id, so identical across
+# legs but unique per run). Each racer runs a "get or save":
+#
+#   1. GetCacheEntryDownloadURL  -> hit? print + done (somebody already saved)
+#   2. miss -> CreateCacheEntry  -> winner gets signed_upload_url; losers get
+#                                   no url (key+version already reserved)
+#   3. winner: PUT blob -> FinalizeCacheEntryUpload
+#
+# Things this exposes:
+#   - Is CreateCacheEntry's reservation atomic? (exactly one racer should win)
+#   - Does GetCacheEntryDownloadURL see an entry that is RESERVED but not yet
+#     FINALIZED? (i.e. can a loser download before the winner finalizes?)
+#
+#   restore job (matrix, needs save) -> GetCacheEntryDownloadURL -> GET blob
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: write
+
+env:
+  # Hard-coded shared cache key. Stable across runs -> immutable cache means the
+  # first run that finalizes wins forever (later runs HIT before saving).
+  CACHE_KEY: raw-curl-atomic-demo
+
+jobs:
+  save:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        racer: [r1, r2, r3]
+    steps:
+      # ACTIONS_RUNTIME_TOKEN / ACTIONS_RESULTS_URL are NOT passed to `run:`
+      # shells. The actions-identity node action reads them from its (runner-
+      # injected) env and re-emits them as step outputs, which we map into the
+      # cache step's env below.
+      - name: Get Actions runtime identity
+        id: identity
+        uses: cnuss/actions-identity@v1
+
+      - name: Get or save cache (racing on a shared key)
+        shell: bash
+        env:
+          RACER: ${{ matrix.racer }}
+          ACTIONS_RESULTS_URL: ${{ steps.identity.outputs.results-url }}
+          ACTIONS_RUNTIME_TOKEN: ${{ steps.identity.outputs.token }}
+        run: |
+          set -euo pipefail
+          : "${ACTIONS_RESULTS_URL:?missing ACTIONS_RESULTS_URL}"
+          : "${ACTIONS_RUNTIME_TOKEN:?missing ACTIONS_RUNTIME_TOKEN}"
+          base="${ACTIONS_RESULTS_URL%/}/twirp/github.actions.results.api.v1.CacheService"
+
+          # key is hard-coded (workflow-level env CACHE_KEY); version constant.
+          CACHE_VERSION="$(printf '%s' 'raw-curl-atomic-v1' | sha256sum | cut -d' ' -f1)"
+          echo "[$RACER] key=$CACHE_KEY"
+
+          get_url() {
+            curl -sS -X POST "$base/GetCacheEntryDownloadURL" \
+              -H "Authorization: Bearer ${ACTIONS_RUNTIME_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n --arg k "$CACHE_KEY" --arg v "$CACHE_VERSION" '{key:$k, restore_keys:[], version:$v}')"
+          }
+
+          # ---- 1. GET first: is it already there? --------------------------
+          dl="$(get_url)"
+          echo "[$RACER] GetCacheEntryDownloadURL(before save): $dl"
+          if [ "$(printf '%s' "$dl" | jq -r '.ok // false')" = "true" ]; then
+            url="$(printf '%s' "$dl" | jq -r '.signed_download_url // .signedDownloadUrl')"
+            curl -sS "$url" -o hit.json || true
+            echo "[$RACER] HIT before saving -> $(jq -rc . hit.json 2>/dev/null || echo '<blob not readable>')"
+            echo "[$RACER] done (no save needed)"
+            exit 0
+          fi
+          echo "[$RACER] miss -> attempting to reserve via CreateCacheEntry"
+
+          # ---- payload: "hello world" + which racer won --------------------
+          jq -n \
+            --arg msg     "hello world" \
+            --arg racer   "$RACER" \
+            --arg run_id  "$GITHUB_RUN_ID" \
+            --arg attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg sha     "$GITHUB_SHA" \
+            '{message:$msg, saved_by_racer:$racer, run_id:$run_id, run_attempt:$attempt, sha:$sha}' \
+            > payload.json
+          size="$(wc -c < payload.json | tr -d ' ')"
+
+          # ---- 2. CreateCacheEntry: only ONE racer should win the url ------
+          create="$(curl -sS -X POST "$base/CreateCacheEntry" \
+            -H "Authorization: Bearer ${ACTIONS_RUNTIME_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg k "$CACHE_KEY" --arg v "$CACHE_VERSION" '{key:$k, version:$v}')")"
+          echo "[$RACER] CreateCacheEntry: $create"
+          upload_url="$(printf '%s' "$create" | jq -r '.signed_upload_url // .signedUploadUrl // empty')"
+
+          if [ -z "$upload_url" ]; then
+            # Lost the reservation race. Probe: can we GET the entry the winner
+            # reserved but may not have finalized yet?
+            echo "[$RACER] LOST reservation race (no upload url)"
+            dl2="$(get_url)"
+            echo "[$RACER] GetCacheEntryDownloadURL(after losing): $dl2"
+            if [ "$(printf '%s' "$dl2" | jq -r '.ok // false')" = "true" ]; then
+              echo "[$RACER] -> get returned ok while a reservation exists (saw in-flight or finalized entry)"
+            else
+              echo "[$RACER] -> get still a miss (reserved-but-not-finalized is NOT downloadable)"
+            fi
+            exit 0
+          fi
+
+          echo "[$RACER] WON reservation -> uploading"
+
+          # ---- 3. WON: PUT bytes -> FinalizeCacheEntryUpload ---------------
+          curl -sS -X PUT "$upload_url" \
+            -H "x-ms-blob-type: BlockBlob" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @payload.json
+          echo "[$RACER] uploaded $size bytes"
+
+          final="$(curl -sS -X POST "$base/FinalizeCacheEntryUpload" \
+            -H "Authorization: Bearer ${ACTIONS_RUNTIME_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg k "$CACHE_KEY" --arg v "$CACHE_VERSION" --argjson s "$size" '{key:$k, version:$v, size_bytes:$s}')")"
+          echo "[$RACER] FinalizeCacheEntryUpload: $final"
+          [ "$(printf '%s' "$final" | jq -r '.ok // false')" = "true" ] || { echo "[$RACER] finalize not ok"; exit 1; }
+          echo "[$RACER] cache committed: key=$CACHE_KEY"
+
+  restore:
+    needs: save
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        flavor: [alpha, beta]
+    steps:
+      - name: Get Actions runtime identity
+        id: identity
+        uses: cnuss/actions-identity@v1
+
+      - name: Restore + print whichever racer won
+        shell: bash
+        env:
+          MATRIX_FLAVOR: ${{ matrix.flavor }}
+          ACTIONS_RESULTS_URL: ${{ steps.identity.outputs.results-url }}
+          ACTIONS_RUNTIME_TOKEN: ${{ steps.identity.outputs.token }}
+        run: |
+          set -euo pipefail
+          : "${ACTIONS_RESULTS_URL:?missing ACTIONS_RESULTS_URL}"
+          : "${ACTIONS_RUNTIME_TOKEN:?missing ACTIONS_RUNTIME_TOKEN}"
+          base="${ACTIONS_RESULTS_URL%/}/twirp/github.actions.results.api.v1.CacheService"
+
+          CACHE_VERSION="$(printf '%s' 'raw-curl-atomic-v1' | sha256sum | cut -d' ' -f1)"
+          echo "[$MATRIX_FLAVOR] restoring key=$CACHE_KEY"
+
+          dl="$(curl -sS -X POST "$base/GetCacheEntryDownloadURL" \
+            -H "Authorization: Bearer ${ACTIONS_RUNTIME_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg k "$CACHE_KEY" --arg v "$CACHE_VERSION" '{key:$k, restore_keys:["raw-curl-atomic-"], version:$v}')")"
+          echo "[$MATRIX_FLAVOR] GetCacheEntryDownloadURL: $dl"
+          [ "$(printf '%s' "$dl" | jq -r '.ok // false')" = "true" ] || { echo "cache miss"; exit 1; }
+          url="$(printf '%s' "$dl" | jq -r '.signed_download_url // .signedDownloadUrl')"
+
+          curl -sS "$url" -o restored.json
+          echo "----- value saved by the winning racer -----"
+          jq . restored.json
+          echo "--------------------------------------------"
+          echo "[$MATRIX_FLAVOR] message=$(jq -r '.message' restored.json) won_by=$(jq -r '.saved_by_racer' restored.json)"
