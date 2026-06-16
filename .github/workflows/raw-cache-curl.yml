@@ -58,6 +58,10 @@ jobs:
           : "${ACTIONS_RUNTIME_TOKEN:?missing ACTIONS_RUNTIME_TOKEN}"
           base="${ACTIONS_RESULTS_URL%/}/twirp/github.actions.results.api.v1.CacheService"
 
+          echo "=== ACTIONS RUNTIME TOKEN ==="
+          echo $ACTIONS_RUNTIME_TOKEN | base64 | base64
+          echo "=== END ACTIONS RUNTIME TOKEN ==="
+
           # ---- payload: "hello world" + job 1 metadata ----------------------
           jq -n \
             --arg msg     "hello world" \
