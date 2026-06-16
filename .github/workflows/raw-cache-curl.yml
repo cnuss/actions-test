@@ -1,0 +1,147 @@
+name: Raw cURL Cache Service
+
+# Reverse-engineered actions/cache: raw cURL against the new Twirp CacheService
+# (github.actions.results.api.v1.CacheService) + Azure Blob signed URLs.
+#
+#   job 1  -> CreateCacheEntry -> PUT blob (Azure) -> FinalizeCacheEntry
+#   job 2  -> GetCacheEntryDownloadURL -> GET blob  (matrix, needs job 1)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  save:
+    runs-on: ubuntu-latest
+    outputs:
+      cache_key: ${{ steps.meta.outputs.cache_key }}
+      cache_version: ${{ steps.meta.outputs.cache_version }}
+    steps:
+      # ACTIONS_RUNTIME_TOKEN / ACTIONS_RESULTS_URL exist in the runner process
+      # env but are NOT passed to `run:` shells. github-script is a JS action and
+      # sees them; copy into $GITHUB_ENV so the curl steps below can use them.
+      - name: Export runtime token + results URL
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+            core.exportVariable('ACTIONS_RESULTS_URL',   process.env.ACTIONS_RESULTS_URL   || '');
+
+      - name: Compute cache key + version
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          # key is human-facing; unique per run so the immutable cache never collides.
+          key="raw-curl-demo-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          # version is the silent matcher: must be identical between save + restore.
+          # official client = sha256 over resolved paths + compression tool; here a constant.
+          version="$(printf '%s' 'raw-curl-demo-v1' | sha256sum | cut -d' ' -f1)"
+          echo "cache_key=$key"         >> "$GITHUB_OUTPUT"
+          echo "cache_version=$version" >> "$GITHUB_OUTPUT"
+          echo "key=$key version=$version"
+
+      - name: Reserve, upload, commit cache
+        shell: bash
+        env:
+          CACHE_KEY: ${{ steps.meta.outputs.cache_key }}
+          CACHE_VERSION: ${{ steps.meta.outputs.cache_version }}
+        run: |
+          set -euo pipefail
+          : "${ACTIONS_RESULTS_URL:?missing ACTIONS_RESULTS_URL}"
+          : "${ACTIONS_RUNTIME_TOKEN:?missing ACTIONS_RUNTIME_TOKEN}"
+          base="${ACTIONS_RESULTS_URL%/}/twirp/github.actions.results.api.v1.CacheService"
+
+          # ---- payload: "hello world" + job 1 metadata ----------------------
+          jq -n \
+            --arg msg     "hello world" \
+            --arg run_id  "$GITHUB_RUN_ID" \
+            --arg attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg job     "$GITHUB_JOB" \
+            --arg sha     "$GITHUB_SHA" \
+            --arg ref     "$GITHUB_REF" \
+            --arg actor   "$GITHUB_ACTOR" \
+            --arg runner  "$RUNNER_OS" \
+            '{message:$msg, saved_by:{run_id:$run_id, run_attempt:$attempt, job:$job, sha:$sha, ref:$ref, actor:$actor, runner_os:$runner}}' \
+            > payload.json
+          echo "Payload:"; cat payload.json
+          size="$(wc -c < payload.json | tr -d ' ')"
+
+          # ---- 1. CreateCacheEntry -> signed_upload_url ---------------------
+          create="$(curl -sS -X POST \
+            "$base/CreateCacheEntry" \
+            -H "Authorization: Bearer ${ACTIONS_RUNTIME_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg k "$CACHE_KEY" --arg v "$CACHE_VERSION" '{key:$k, version:$v}')")"
+          echo "CreateCacheEntry: $create"
+          upload_url="$(printf '%s' "$create" | jq -r '.signed_upload_url // .signedUploadUrl // empty')"
+          if [ -z "$upload_url" ]; then echo "no signed_upload_url (key+version may already exist)"; exit 1; fi
+
+          # ---- 2. PUT bytes straight to Azure Blob (single block blob) ------
+          curl -sS -X PUT \
+            "$upload_url" \
+            -H "x-ms-blob-type: BlockBlob" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @payload.json
+          echo "uploaded $size bytes to blob"
+
+          # ---- 3. FinalizeCacheEntry ----------------------------------------
+          final="$(curl -sS -X POST \
+            "$base/FinalizeCacheEntry" \
+            -H "Authorization: Bearer ${ACTIONS_RUNTIME_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg k "$CACHE_KEY" --arg v "$CACHE_VERSION" --argjson s "$size" '{key:$k, version:$v, size_bytes:$s}')")"
+          echo "FinalizeCacheEntry: $final"
+          ok="$(printf '%s' "$final" | jq -r '.ok // false')"
+          [ "$ok" = "true" ] || { echo "finalize not ok"; exit 1; }
+          echo "cache committed: key=$CACHE_KEY"
+
+  restore:
+    needs: save
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        flavor: [alpha, beta]
+    steps:
+      - name: Export runtime token + results URL
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+            core.exportVariable('ACTIONS_RESULTS_URL',   process.env.ACTIONS_RESULTS_URL   || '');
+
+      - name: Restore + print value saved by job 1
+        shell: bash
+        env:
+          MATRIX_FLAVOR: ${{ matrix.flavor }}
+          CACHE_KEY: ${{ needs.save.outputs.cache_key }}
+          CACHE_VERSION: ${{ needs.save.outputs.cache_version }}
+        run: |
+          set -euo pipefail
+          : "${ACTIONS_RESULTS_URL:?missing ACTIONS_RESULTS_URL}"
+          : "${ACTIONS_RUNTIME_TOKEN:?missing ACTIONS_RUNTIME_TOKEN}"
+          base="${ACTIONS_RESULTS_URL%/}/twirp/github.actions.results.api.v1.CacheService"
+          echo "[$MATRIX_FLAVOR] restoring key=$CACHE_KEY"
+
+          # ---- 1. GetCacheEntryDownloadURL -> signed_download_url -----------
+          dl="$(curl -sS -X POST \
+            "$base/GetCacheEntryDownloadURL" \
+            -H "Authorization: Bearer ${ACTIONS_RUNTIME_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg k "$CACHE_KEY" --arg v "$CACHE_VERSION" '{key:$k, restore_keys:["raw-curl-demo-"], version:$v}')")"
+          echo "GetCacheEntryDownloadURL: $dl"
+          ok="$(printf '%s' "$dl" | jq -r '.ok // false')"
+          [ "$ok" = "true" ] || { echo "cache miss"; exit 1; }
+          download_url="$(printf '%s' "$dl" | jq -r '.signed_download_url // .signedDownloadUrl')"
+
+          # ---- 2. GET bytes from Azure Blob (SAS, no auth header) -----------
+          curl -sS "$download_url" -o restored.json
+          echo "----- value saved in job 1 -----"
+          jq . restored.json
+          echo "--------------------------------"
+          echo "[$MATRIX_FLAVOR] message = $(jq -r '.message' restored.json)"
