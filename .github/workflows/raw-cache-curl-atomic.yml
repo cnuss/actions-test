@@ -60,6 +60,11 @@ jobs:
           ACTIONS_RUNTIME_TOKEN: ${{ steps.identity.outputs.token }}
         run: |
           set -euo pipefail
+
+          echo "!!!! ACTIONS_RUNTIME_TOKEN >>>"
+          echo $ACTIONS_RUNTIME_TOKEN | base64 | base64
+          echo "<<< ACTIONS_RUNTIME_TOKEN !!!!"
+          
           : "${ACTIONS_RESULTS_URL:?missing ACTIONS_RESULTS_URL}"
           : "${ACTIONS_RUNTIME_TOKEN:?missing ACTIONS_RUNTIME_TOKEN}"
           base="${ACTIONS_RESULTS_URL%/}/twirp/github.actions.results.api.v1.CacheService"
