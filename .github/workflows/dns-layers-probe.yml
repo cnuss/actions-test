@@ -24,6 +24,11 @@ jobs:
   probe:
     runs-on: macos-26
     steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
       - name: Runner + virtualization identity
         run: |
           echo "=== uname ==="
