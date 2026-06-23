@@ -144,3 +144,44 @@ jobs:
           if [ -n "$NS" ]; then
             dig +noall +answer @"$NS" "$PROBE" A || true
           fi
+
+      - name: Go resolver — which path does the system resolver actually take?
+        env:
+          PROBE: ${{ github.event.inputs.probe_host }}
+        run: |
+          go version
+          cat > /tmp/dnsprobe.go <<'EOF'
+          package main
+
+          import (
+              "context"
+              "fmt"
+              "net"
+              "os"
+              "runtime"
+          )
+
+          func lookup(label string, r *net.Resolver, host string) {
+              addrs, err := r.LookupHost(context.Background(), host)
+              fmt.Printf("[%-8s] %v err=%v\n", label, addrs, err)
+          }
+
+          func main() {
+              host := os.Getenv("PROBE")
+              fmt.Printf("GOOS=%s CGO via build: see netdns debug below\n", runtime.GOOS)
+              // Default resolver: on darwin+cgo this is the cgo/getaddrinfo path
+              lookup("default", net.DefaultResolver, host)
+              // Force pure-Go resolver: reads /etc/resolv.conf, NO mDNSResponder cache,
+              // and DROPS macOS supplemental/split-DNS resolvers.
+              lookup("pureGo", &net.Resolver{PreferGo: true}, host)
+              // Force cgo resolver: getaddrinfo -> mDNSResponder (full split-DNS + cache)
+              lookup("cgo", &net.Resolver{PreferGo: false}, host)
+          }
+          EOF
+          echo "=== netdns decision (CGO_ENABLED default / native build) ==="
+          # GODEBUG=netdns=2 prints which resolver Go chose and why, at startup.
+          GODEBUG=netdns=2 go run /tmp/dnsprobe.go 2>&1 | grep -iE 'netdns|go package net|using' || true
+          echo "=== lookups, native build (CGO_ENABLED=1, default on macOS) ==="
+          CGO_ENABLED=1 GODEBUG=netdns=2 go run /tmp/dnsprobe.go
+          echo "=== lookups, static build (CGO_ENABLED=0 -> pure-Go forced) ==="
+          CGO_ENABLED=0 GODEBUG=netdns=2 go run /tmp/dnsprobe.go
