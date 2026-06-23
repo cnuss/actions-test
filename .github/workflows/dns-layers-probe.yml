@@ -27,7 +27,9 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          # macOS 26 dyld rejects binaries without LC_UUID; Go <1.23 cgo builds
+          # abort-trap. 1.24 emits LC_UUID -> cgo resolver runs.
+          go-version: "1.24"
 
       - name: Runner + virtualization identity
         run: |
@@ -187,6 +189,6 @@ jobs:
           # GODEBUG=netdns=2 prints which resolver Go chose and why, at startup.
           GODEBUG=netdns=2 go run /tmp/dnsprobe.go 2>&1 | grep -iE 'netdns|go package net|using' || true
           echo "=== lookups, native build (CGO_ENABLED=1, default on macOS) ==="
-          CGO_ENABLED=1 GODEBUG=netdns=2 go run /tmp/dnsprobe.go
+          CGO_ENABLED=1 GODEBUG=netdns=2 go run /tmp/dnsprobe.go || echo "(cgo run failed exit $?)"
           echo "=== lookups, static build (CGO_ENABLED=0 -> pure-Go forced) ==="
-          CGO_ENABLED=0 GODEBUG=netdns=2 go run /tmp/dnsprobe.go
+          CGO_ENABLED=0 GODEBUG=netdns=2 go run /tmp/dnsprobe.go || echo "(pureGo run failed exit $?)"
