@@ -1,0 +1,146 @@
+name: dns-layers-probe
+
+# Probe the DNS "layer soup" inside a virtualized macos-latest runner.
+# Goal: figure out WHY an authoritative server can have a fresh record while
+# the system resolver still fails (NXDOMAIN / stale cache / split layers).
+#
+# Manually triggered. Optionally pass a hostname you KNOW was recently added
+# to your authoritative zone, plus that zone's authoritative NS, to reproduce
+# the anomaly across every layer at once.
+
+on:
+  workflow_dispatch:
+    inputs:
+      probe_host:
+        description: "Recently-added hostname to test (FQDN)"
+        required: false
+        default: "github.com"
+      authoritative_ns:
+        description: "Authoritative NS to compare against (IP or host)"
+        required: false
+        default: ""
+
+jobs:
+  probe:
+    runs-on: macos-latest
+    steps:
+      - name: Runner + virtualization identity
+        run: |
+          echo "=== uname ==="
+          uname -a
+          echo "=== macOS version ==="
+          sw_vers
+          echo "=== hardware / VM hints ==="
+          sysctl -n machdep.cpu.brand_string || true
+          sysctl -n hw.model || true
+          # Virtualization brand: Apple Virtualization.framework, VMware, QEMU, Anka...
+          ioreg -l 2>/dev/null | grep -i -E "virtual|vmware|qemu|hypervisor" | head -20 || true
+          echo "=== ifconfig ==="
+          ifconfig
+
+      - name: Layer 1 — SystemConfiguration resolver (scutil)
+        run: |
+          # THE source of truth on macOS. mDNSResponder reads THIS, not resolv.conf.
+          # Shows per-scope resolvers, search domains, and supplemental/split-DNS
+          # resolvers (each can route different domains to different servers).
+          echo "=== scutil --dns ==="
+          scutil --dns
+          echo "=== scutil --nwi (network info / primary interface) ==="
+          scutil --nwi || true
+          echo "=== State:/Network/Global/DNS ==="
+          echo 'show State:/Network/Global/DNS' | scutil || true
+
+      - name: Layer 2 — legacy resolv.conf (usually a lie on macOS)
+        run: |
+          echo "=== /etc/resolv.conf ==="
+          # On macOS this is auto-generated and most system APIs IGNORE it.
+          # CLI tools using libresolv directly (some) may read it; mDNSResponder does not.
+          cat /etc/resolv.conf || echo "(absent)"
+          echo "=== /var/run/resolv.conf ==="
+          cat /var/run/resolv.conf 2>/dev/null || echo "(absent)"
+          echo "=== /etc/hosts ==="
+          cat /etc/hosts
+
+      - name: Layer 3 — mDNSResponder daemon (the actual resolver + cache)
+        run: |
+          echo "=== process ==="
+          ps aux | grep -E "[m]DNSResponder|[d]iscoveryd" || true
+          echo "=== launchd state ==="
+          sudo launchctl list 2>/dev/null | grep -i mDNS || true
+          # Ask the daemon to dump its in-memory cache + resolver config to syslog.
+          echo "=== requesting mDNSResponder state dump (SIGINFO) ==="
+          sudo killall -INFO mDNSResponder 2>/dev/null && echo "signal sent" || echo "(could not signal)"
+          sleep 1
+          echo "=== state dump (if logged) ==="
+          # Newer macOS dumps to /var/log or unified log; try both.
+          sudo log show --last 30s --predicate 'process == "mDNSResponder"' 2>/dev/null | tail -200 || true
+          ls -la /private/var/log/mDNSResponder/ 2>/dev/null || true
+
+      - name: Layer 4 — Directory Service cache (dscacheutil)
+        run: |
+          echo "=== dscacheutil resolver config ==="
+          dscacheutil -configuration || true
+          echo "=== dscacheutil host lookup for probe host ==="
+          dscacheutil -q host -a name "${{ github.event.inputs.probe_host }}" || true
+
+      - name: The anomaly — same name through every path
+        env:
+          PROBE: ${{ github.event.inputs.probe_host }}
+          NS: ${{ github.event.inputs.authoritative_ns }}
+        run: |
+          set -x
+          echo "### Path A: system resolver (what your app/runner actually sees)"
+          # dscacheutil + getent-equivalent both go through mDNSResponder -> the
+          # layer that can be stale or split. This is where NXDOMAIN appears.
+          dscacheutil -q host -a name "$PROBE" || true
+          # ping uses the system resolver too (gethostbyname via mDNSResponder).
+          ping -c1 -t2 "$PROBE" 2>&1 | head -3 || true
+
+          echo "### Path B: dig via system-configured resolver"
+          # dig does NOT use mDNSResponder; it reads /etc/resolv.conf nameservers
+          # directly. Different code path -> can disagree with Path A.
+          dig +nostats "$PROBE" A || true
+
+          echo "### Path C: dig straight at the authoritative NS (ground truth)"
+          if [ -n "$NS" ]; then
+            dig +nostats @"$NS" "$PROBE" A || true
+          else
+            echo "(no authoritative_ns provided — skipping ground-truth compare)"
+          fi
+
+          echo "### Path D: dig at public resolvers (bypass everything local)"
+          dig +short @1.1.1.1 "$PROBE" A || true
+          dig +short @8.8.8.8 "$PROBE" A || true
+
+      - name: Caching behavior — does a flush change the answer?
+        env:
+          PROBE: ${{ github.event.inputs.probe_host }}
+        run: |
+          echo "=== before flush (system resolver) ==="
+          dscacheutil -q host -a name "$PROBE" || true
+          echo "=== flushing mDNSResponder + DirectoryService cache ==="
+          sudo dscacheutil -flushcache || true
+          sudo killall -HUP mDNSResponder || true
+          sleep 1
+          echo "=== after flush (system resolver) ==="
+          dscacheutil -q host -a name "$PROBE" || true
+          # If answer CHANGES post-flush -> stale cache in mDNSResponder was the culprit.
+          # If answer stays NXDOMAIN but Path C/D resolve -> negative-cache or split-DNS.
+
+      - name: Negative caching probe (the classic "recently added" trap)
+        env:
+          PROBE: ${{ github.event.inputs.probe_host }}
+          NS: ${{ github.event.inputs.authoritative_ns }}
+        run: |
+          # If you queried the name BEFORE the record existed, mDNSResponder caches
+          # the NXDOMAIN for the SOA-negative-TTL. Show the SOA minimum TTL that
+          # governs how long that negative answer sticks.
+          echo "=== SOA / negative TTL governing NXDOMAIN lifetime ==="
+          dig +nostats SOA "$PROBE" || true
+          if [ -n "$NS" ]; then
+            dig +nostats @"$NS" SOA "$PROBE" || true
+          fi
+          echo "=== TTL on the actual A record (authoritative) ==="
+          if [ -n "$NS" ]; then
+            dig +noall +answer @"$NS" "$PROBE" A || true
+          fi
