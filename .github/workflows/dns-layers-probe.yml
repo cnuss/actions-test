@@ -22,7 +22,7 @@ on:
 
 jobs:
   probe:
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
       - name: Runner + virtualization identity
         run: |
