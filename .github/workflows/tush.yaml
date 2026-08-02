@@ -1,4 +1,4 @@
-name: Decode OIDC Token
+name: Run Tush
 
 on:
   workflow_dispatch:
