@@ -1,0 +1,16 @@
+name: Decode OIDC Token
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  run-tush:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Tush
+        shell: bash
+        run: npx @scaffoldly/tush
