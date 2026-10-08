@@ -1,0 +1,132 @@
+name: actions-state spike
+
+# Throwaway checks for the actions-state design: GHCR nested names and custom
+# artifact types, package visibility through GITHUB_TOKEN, Terraform and
+# OpenTofu waiting on a slow LOCK, and a detached server across steps.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mutex-spike]
+    paths:
+      - .github/workflows/state-spike.yml
+      - .github/actions/state-spike-detached/**
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  ghcr:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Push an OCI artifact to a nested name with a custom artifactType
+        run: |
+          set -euo pipefail
+          image=$(echo "${GITHUB_REPOSITORY}/actions-state-spike" | tr '[:upper:]' '[:lower:]')
+          token=$(curl -fsS -u "x:${GH_TOKEN}" "https://ghcr.io/token?scope=repository:${image}:pull,push&service=ghcr.io" | jq -r .token)
+          auth="Authorization: Bearer ${token}"
+          upload() {
+            local digest loc
+            digest="sha256:$(sha256sum "$1" | cut -d' ' -f1)"
+            loc=$(curl -fsS -o /dev/null -D - -X POST -H "$auth" "https://ghcr.io/v2/${image}/blobs/uploads/" | awk 'tolower($1)=="location:"{print $2}' | tr -d '\r')
+            case "$loc" in http*) ;; *) loc="https://ghcr.io${loc}" ;; esac
+            local sep='?'; case "$loc" in *\?*) sep='&' ;; esac
+            curl -fsS -X PUT -H "$auth" -H 'Content-Type: application/octet-stream' --data-binary @"$1" "${loc}${sep}digest=${digest}" -o /dev/null
+            echo "$digest"
+          }
+          printf '{}' > config.json
+          echo '{"version":4,"serial":7,"lineage":"spike"}' > state.json
+          cfg=$(upload config.json)
+          layer=$(upload state.json)
+          jq -n --arg cfg "$cfg" --arg layer "$layer" --argjson size "$(stat -c%s state.json)" --arg src "https://github.com/${GITHUB_REPOSITORY}" '{
+            schemaVersion: 2,
+            mediaType: "application/vnd.oci.image.manifest.v1+json",
+            artifactType: "application/vnd.cnuss.actions-state.v1",
+            config: {mediaType: "application/vnd.oci.empty.v1+json", digest: $cfg, size: 2},
+            layers: [{mediaType: "application/vnd.cnuss.actions-state.tfstate.v1", digest: $layer, size: $size}],
+            annotations: {"org.opencontainers.image.source": $src, "io.github.cnuss.actions-state.serial": "7"}
+          }' > manifest.json
+          for tag in spike-root.v7 spike-root; do
+            curl -sS -X PUT -H "$auth" -H 'Content-Type: application/vnd.oci.image.manifest.v1+json' \
+              --data-binary @manifest.json "https://ghcr.io/v2/${image}/manifests/${tag}" -o /dev/null -w "PUT ${tag}: HTTP %{http_code}\n"
+          done
+          echo "--- manifest by tag"
+          curl -fsS -H "$auth" -H 'Accept: application/vnd.oci.image.manifest.v1+json' "https://ghcr.io/v2/${image}/manifests/spike-root" | jq '{artifactType, config: .config.mediaType, layer: .layers[0].mediaType}'
+          echo "--- tags"
+          curl -fsS -H "$auth" "https://ghcr.io/v2/${image}/tags/list" | jq -c .
+          echo "--- blob (expect a redirect, then the state)"
+          curl -sS -o /dev/null -w 'blob GET: HTTP %{http_code} -> %{redirect_url}\n' -H "$auth" "https://ghcr.io/v2/${image}/blobs/${layer}"
+          curl -fsSL -H "$auth" "https://ghcr.io/v2/${image}/blobs/${layer}"
+
+      - name: Read the package's visibility with GITHUB_TOKEN
+        run: |
+          owner=${GITHUB_REPOSITORY%%/*}
+          name=$(printf '%s' "${GITHUB_REPOSITORY#*/}/actions-state-spike" | tr '[:upper:]' '[:lower:]' | jq -sRr @uri)
+          for scope in users orgs; do
+            curl -sS -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/${scope}/${owner}/packages/container/${name}" -o pkg.json -w "${scope}: HTTP %{http_code}\n"
+            jq -c '{visibility, name, repository: .repository.full_name}' pkg.json || cat pkg.json
+          done
+
+  long-lock:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: [terraform, tofu]
+    steps:
+      - name: Install ${{ matrix.tool }}
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.tool }}" = terraform ]; then
+            v=1.16.5; base="https://releases.hashicorp.com/terraform/${v}"; zip="terraform_${v}_linux_amd64.zip"
+          else
+            v=1.13.1; base="https://github.com/opentofu/opentofu/releases/download/v${v}"; zip="tofu_${v}_linux_amd64.zip"
+          fi
+          curl -fsSLO "${base}/${zip}"
+          sudo unzip -o -q "$zip" -d /usr/local/bin "${{ matrix.tool }}"
+
+      - name: Plan against a server that holds LOCK open for 300 s
+        run: |
+          set -euo pipefail
+          cat > server.js <<'EOF'
+          const http = require('http');
+          http.createServer((req, res) => {
+            console.log(new Date().toISOString(), req.method, req.url);
+            if (req.method === 'LOCK') { setTimeout(() => res.end(), 300000); return; }
+            if (req.method === 'GET') { res.statusCode = 404; res.end(); return; }
+            res.end();
+          }).listen(8765, '127.0.0.1');
+          EOF
+          node server.js > server.log 2>&1 &
+          sleep 1
+          cat > main.tf <<'EOF'
+          terraform {
+            backend "http" {
+              address        = "http://127.0.0.1:8765/state"
+              lock_address   = "http://127.0.0.1:8765/lock"
+              unlock_address = "http://127.0.0.1:8765/lock"
+            }
+          }
+          resource "terraform_data" "x" {}
+          EOF
+          ${{ matrix.tool }} init -input=false
+          start=$(date +%s)
+          ${{ matrix.tool }} plan -input=false
+          echo "plan waited $(( $(date +%s) - start ))s for the lock"
+          cat server.log
+
+  detached:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: ./.github/actions/state-spike-detached
+      - name: Reach the server from a later step
+        run: |
+          sleep 2
+          curl -fsS "http://127.0.0.1:$(cat "$RUNNER_TEMP/state-spike.port")/"
+      - name: And from the step after that
+        run: curl -fsS "http://127.0.0.1:$(cat "$RUNNER_TEMP/state-spike.port")/"

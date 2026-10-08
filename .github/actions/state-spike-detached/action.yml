@@ -1,0 +1,7 @@
+name: state-spike-detached
+description: Starts a detached HTTP server in main and stops it in post.
+runs:
+  using: node24
+  main: index.js
+  post: index.js
+  post-if: always()
