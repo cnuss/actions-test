@@ -1,0 +1,93 @@
+name: Mutex spike (cache as a lock)
+
+# Can the Actions cache be a mutex, not just run-once?
+#   acquire = CreateCacheEntry + PUT + FinalizeCacheEntryUpload
+#   release = REST DELETE /actions/caches/{cache_id}
+# Logic lives in .github/mutex-spike/spike.js; results land in the job summaries.
+
+on:
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: 'Contending workers (JSON array)'
+        default: '["w1","w2","w3","w4"]'
+      rounds:
+        description: 'Acquisitions per worker'
+        default: '2'
+      hold-seconds:
+        description: 'Critical section length'
+        default: '10'
+  push:
+    branches: [mutex-spike]
+    paths:
+      - .github/workflows/mutex-spike.yml
+      - .github/mutex-spike/**
+
+permissions:
+  contents: read
+  # CreateCacheEntry and the REST cache delete.
+  actions: write
+
+jobs:
+  handoff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Delete → re-create on the same key+version
+        uses: actions/github-script@v9
+        env:
+          CYCLES: '5'
+          REACQUIRE_TIMEOUT_SECONDS: '300'
+        with:
+          script: |
+            const spike = require(`${process.env.GITHUB_WORKSPACE}/.github/mutex-spike/spike.js`);
+            await spike.handoff({ github, context, core });
+
+  contend:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: ${{ fromJSON(inputs.workers || '["w1","w2","w3","w4"]') }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Acquire, hold, release
+        uses: actions/github-script@v9
+        env:
+          WORKER: ${{ matrix.worker }}
+          ROUNDS: ${{ inputs.rounds || '2' }}
+          HOLD_SECONDS: ${{ inputs.hold-seconds || '10' }}
+          ACQUIRE_TIMEOUT_SECONDS: '900'
+        with:
+          script: |
+            const spike = require(`${process.env.GITHUB_WORKSPACE}/.github/mutex-spike/spike.js`);
+            await spike.contend({ github, context, core });
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: intervals-${{ matrix.worker }}
+          path: intervals-${{ matrix.worker }}.json
+
+  verify:
+    needs: contend
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: intervals-*
+          path: intervals
+          merge-multiple: true
+
+      - name: Check for overlapping critical sections
+        uses: actions/github-script@v9
+        env:
+          INTERVALS_DIR: intervals
+        with:
+          script: |
+            const spike = require(`${process.env.GITHUB_WORKSPACE}/.github/mutex-spike/spike.js`);
+            await spike.verify({ github, context, core });
