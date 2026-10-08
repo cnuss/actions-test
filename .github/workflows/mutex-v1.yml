@@ -1,0 +1,36 @@
+name: actions-mutex@v1 smoke
+
+# Consumes the released action from outside its repo: two jobs share a key and
+# must take turns.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mutex-spike]
+    paths:
+      - .github/workflows/mutex-v1.yml
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  hold:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        worker: [a, b]
+    steps:
+      - id: lock
+        uses: cnuss/actions-mutex@v1
+        with:
+          key: smoke-${{ github.run_id }}
+
+      - name: Critical section
+        env:
+          WORKER: ${{ matrix.worker }}
+          WAIT: ${{ steps.lock.outputs.wait-seconds }}
+        run: |
+          echo "$WORKER in at $(date -u +%H:%M:%S) after ${WAIT}s"
+          sleep 15
+          echo "$WORKER out at $(date -u +%H:%M:%S)"
